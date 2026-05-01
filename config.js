@@ -10,8 +10,8 @@
 //   "Project URL"  → ใส่ใน SUPABASE_URL
 //   "anon public"  → ใส่ใน SUPABASE_ANON_KEY
 
-window.SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
-window.SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
+window.SUPABASE_URL      = 'https://orxtrliqfdeqwhjrnmkr.supabase.co';
+window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yeHRybGlxZmRlcXdoanJubWtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NTYzMzcsImV4cCI6MjA5MzEzMjMzN30.zaGsSL4sunNJYnboUqacq_HqbyU0sFX1keqt1yK2CQI';
 
 // ── Google OAuth Client ID ─────────────────────────────────────
 // ยังใช้ Client ID เดิมได้ แต่ต้องเพิ่ม Authorized Redirect URI ใหม่:
@@ -22,7 +22,7 @@ window.SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
 // หมายเหตุ: ต้องตั้งค่า Google Provider ใน Supabase Dashboard ด้วย:
 //   Authentication → Providers → Google → ใส่ Client ID + Client Secret
 
-window.GOOGLE_CLIENT_ID  = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+window.GOOGLE_CLIENT_ID  = 'o2spaces's Project.apps.googleusercontent.com';
 
 // ── วิธี Setup (ทีละขั้นตอน) ───────────────────────────────────
 //
