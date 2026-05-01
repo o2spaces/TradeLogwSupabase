@@ -22,7 +22,7 @@ window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB
 // หมายเหตุ: ต้องตั้งค่า Google Provider ใน Supabase Dashboard ด้วย:
 //   Authentication → Providers → Google → ใส่ Client ID + Client Secret
 
-window.GOOGLE_CLIENT_ID  = 'o2spaces's Project.apps.googleusercontent.com';
+window.GOOGLE_CLIENT_ID  = '1008136012501-jqjds4c3c6n2erv9bim5k2noofpp5q2i.apps.googleusercontent.com';
 
 // ── วิธี Setup (ทีละขั้นตอน) ───────────────────────────────────
 //
