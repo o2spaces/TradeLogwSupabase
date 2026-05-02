@@ -1826,8 +1826,8 @@ async function authDoLogin(){
   try{
     // Supabase ใช้ email เป็น identifier — รองรับทั้ง email เต็มและ username@domain
     // ถ้า user พิมพ์แค่ username (ไม่มี @) ต้องเพิ่ม domain สมมติ หรือใช้ email จริง
-    var emailInput = user.indexOf('@') >= 0 ? user : user + '@tradelog.local';
-    // Supabase ต้องการ email format ที่ถูกต้อง — tradelog.local ใช้ได้
+    var emailInput = user.indexOf('@') >= 0 ? user : user + '@tradelog.app';
+    // ใช้ domain เดียวกับ signup (@tradelog.app)
     var res = await _supabase.auth.signInWithPassword({ email: emailInput, password: pass });
     if(res.error){
       err.textContent = '❌ ' + (res.error.message || 'Username หรือ Password ไม่ถูกต้อง');
@@ -1982,27 +1982,65 @@ async function adminAddUser(){
   errEl.style.display = 'none';
 
   if(!uname || !pass){ errEl.textContent='❌ กรอก Username และ Password ก่อน'; errEl.style.display='block'; return; }
+  if(pass.length < 6){ errEl.textContent='❌ Password ต้องมีอย่างน้อย 6 ตัวอักษร'; errEl.style.display='block'; return; }
   if(!_supabase){ errEl.textContent='❌ ไม่ได้ตั้งค่า Supabase'; errEl.style.display='block'; return; }
 
   btn.disabled=true; btn.textContent='⏳ กำลังสร้าง...';
   try{
-    // Supabase Auth ใช้ email — สร้าง fake email จาก username
-    var email = uname.indexOf('@') >= 0 ? uname : uname + '@tradelog.local';
-    var res = await _supabase.auth.admin ? null : null; // admin API ต้องการ service key
-    // ใช้ signUp ปกติ (ต้องรัน Edge Function ถ้าอยาก bypass email confirm)
-    var signRes = await _supabase.auth.signUp({ email: email, password: pass,
+    // สร้าง email จาก username — ใช้ domain ที่ Supabase ยอมรับ
+    var email = uname.indexOf('@') >= 0 ? uname : uname + '@tradelog.app';
+
+    // ลอง signUp — ถ้า Supabase ตั้งค่า "Confirm email" = OFF จะสำเร็จทันที
+    var signRes = await _supabase.auth.signUp({
+      email: email,
+      password: pass,
       options: { data: { username: uname, display_name: display||uname } }
     });
-    if(signRes.error){ errEl.textContent='❌ '+signRes.error.message; errEl.style.display='block'; btn.disabled=false; btn.textContent='➕ เพิ่ม User'; return; }
-    var newUserId = signRes.data.user.id;
+
+    if(signRes.error){
+      // แสดงข้อความ error ที่เข้าใจง่าย
+      var msg = signRes.error.message || '';
+      if(msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists')){
+        errEl.textContent='❌ Username "'+uname+'" มีอยู่ในระบบแล้ว';
+      } else if(msg.toLowerCase().includes('invalid') && msg.toLowerCase().includes('email')){
+        errEl.textContent='❌ ชื่อ Username ไม่ถูกต้อง (ใช้ตัวอักษร a-z, 0-9, _ เท่านั้น)';
+      } else {
+        errEl.textContent='❌ '+msg;
+      }
+      errEl.style.display='block';
+      btn.disabled=false; btn.textContent='➕ เพิ่ม User';
+      return;
+    }
+
+    var newUserId = signRes.data && signRes.data.user && signRes.data.user.id;
+    if(!newUserId){
+      // กรณี email confirmation pending — Supabase ยังไม่ให้ id ทันที
+      errEl.innerHTML='⚠️ User ถูกสร้างแต่ยัง <b>รอ Confirm Email</b><br>'
+        +'กรุณาไปที่ <b>Supabase Dashboard → Authentication → Configuration</b><br>'
+        +'แล้วปิด <b>"Enable email confirmations"</b> เพื่อให้ Login ได้ทันที';
+      errEl.style.display='block';
+      btn.disabled=false; btn.textContent='➕ เพิ่ม User';
+      return;
+    }
+
     // บันทึก profile
-    await _supabase.from('profiles').upsert({
+    var profRes = await _supabase.from('profiles').upsert({
       id: newUserId, username: uname, display_name: display||uname, role: role
     }, { onConflict: 'id' });
-    showToast('✅ เพิ่ม User "'+uname+'" สำเร็จ — รอ confirm email ก่อน login ได้','success');
+
+    if(profRes.error){
+      // Profile save failed แต่ auth user สร้างแล้ว
+      console.warn('[adminAddUser] profile upsert error:', profRes.error.message);
+    }
+
+    var confirmed = signRes.data.user.confirmed_at || signRes.data.user.email_confirmed_at;
+    showToast('✅ เพิ่ม User "'+uname+'" สำเร็จ'+(confirmed?'':' — ต้อง Confirm Email ก่อน Login ได้'),'success');
     ['regUser','regPass','regDisplay'].forEach(function(id){ document.getElementById(id).value=''; });
     adminLoadUsers();
-  }catch(e){ errEl.textContent='❌ เกิดข้อผิดพลาด: '+e.message; errEl.style.display='block'; }
+  }catch(e){
+    errEl.textContent='❌ เกิดข้อผิดพลาด: '+e.message;
+    errEl.style.display='block';
+  }
   btn.disabled=false; btn.textContent='➕ เพิ่ม User';
 }
 
@@ -4987,6 +5025,59 @@ function sendSheet(action, data){
     .catch(function(err){ console.warn('[sendSheet→Supabase]', action, err.message); });
 }
 
+// ── Convert trade object → Supabase row ───────────────────────
+function _tradeToRow(t, uid){
+  // Parse entry date: extract date part (YYYY-MM-DD) and datetime
+  var dateStr = t.date || '';
+  var entryDatetime = t.entryDate || '';
+  var closeDatetime  = t.closeDate  || '';
+
+  // Robustly get entry date from entryDate if t.date is missing
+  if(!dateStr && entryDatetime){
+    var m = entryDatetime.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) dateStr = m[1];
+  }
+
+  return {
+    id:          String(t.id || (Date.now().toString(36) + Math.random().toString(36).slice(2,8))),
+    user_id:     uid,
+    portfolio:   t.portfolio || 'default',
+    date:        dateStr,
+    asset:       t.asset    || '',
+    side:        t.side     || 'Long',
+    lots:        parseFloat(t.lots)       || 0,
+    entry_price: parseFloat(t.entry)      || 0,
+    close_price: parseFloat(t.close)      || null,
+    tp:          parseFloat(t.tp)         || null,
+    sl:          parseFloat(t.sl)         || null,
+    pnl:         parseFloat(t.pnl)        || 0,
+    fees:        parseFloat(t.fees)       || 0,
+    commission:  parseFloat(t.commission) || 0,
+    result:      t.result   || 'BE',
+    risk:        parseFloat(t.risk)       || null,
+    max_rr:      t.maxRR    || null,
+    time_in_pos: t.timeInPos || null,
+    entry_date:  entryDatetime || null,
+    close_date:  closeDatetime  || null,
+    setup_class: t.setupClass || null,
+    candle:      t.candle    || null,
+    code:        t.code      || null,
+    mode:        t.mode      || null,
+    timeframe:   t.tf        || null,
+    trend:       t.trend     || null,
+    zone:        t.zone      || null,
+    confirm:     t.confirm   || null,
+    sessions:    t.sessions  || null,
+    emotion:     t.emotion   !== undefined ? parseInt(t.emotion) : null,
+    discipline:  t.discipline !== undefined ? parseInt(t.discipline) : null,
+    fibo_level:  t.fiboLevel || null,
+    note:        t.note      || null,
+    img_link:    t.imgLink   || null,
+    is_deleted:  t.is_deleted || false,
+    updated_at:  new Date().toISOString()
+  };
+}
+
 async function _sbDispatch(action, d){
   var uid = _authSession && _authSession._sbUserId;
   if(!uid){
@@ -6772,6 +6863,13 @@ function ndSave(){
   var lbl=document.getElementById('ndAutoSaveLabel');
   if(lbl){ var now=new Date(); lbl.textContent='บันทึกแล้ว '+pad(now.getHours())+':'+pad(now.getMinutes()); }
   showToast('📓 บันทึก Note of Day แล้ว'+(_supabase?' → Supabase':''),'success');
+}
+
+function ndCloseEmoji(e){
+  if(e) e.preventDefault();
+  var p=document.getElementById('notesEmojiPanel');
+  if(p) p.style.display='none';
+  _ndEmojiOpen=false;
 }
 
 function ndAutoSave(){
@@ -10513,7 +10611,7 @@ async function doChangePassword(){
     // Supabase: ต้อง re-login ด้วย password เดิมก่อน เพื่อยืนยัน oldPass
     var email = _authSession.username.indexOf('@') >= 0
       ? _authSession.username
-      : _authSession.username + '@tradelog.local';
+      : _authSession.username + '@tradelog.app';
     var verifyRes = await _supabase.auth.signInWithPassword({ email: email, password: oldPass });
     if(verifyRes.error){
       errEl.textContent = '❌ รหัสผ่านเดิมไม่ถูกต้อง';
