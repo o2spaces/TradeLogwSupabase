@@ -791,6 +791,7 @@ var _supabase = null;
       <div style="display:flex;gap:7px;align-items:center;">
         <button class="btn-sm" onclick="dtDeduplicateAll()" title="ลบรายการซ้ำ" style="border-color:var(--amber);color:var(--amber);">🧹 ลบซ้ำ</button>
         <button class="btn-sm" onclick="dtConfirmClearAll()" style="border-color:var(--red);color:var(--red);">🗑 ลบทั้งหมด</button>
+        <button class="btn-sm" onclick="dtOpenImport()" style="border-color:var(--accent);color:var(--accent);">&#x1F4E5; Import CSV</button>
         <button class="btn-sm" onclick="dtExportCSV()" style="border-color:var(--green);color:var(--green);">&#x1F4E4; Export CSV</button>
         <button class="btn-sm" onclick="dtExportTemplate()" title="Export CSV เปล่าสำหรับกรอกข้อมูล" style="border-color:var(--teal);color:var(--teal);font-size:11px;">📋 Template</button>
         
@@ -2435,6 +2436,13 @@ async function syncFromSheet(onDone){
     setConn(true);
     if(sheetRes){ sheetRes.style.color='var(--green)'; sheetRes.textContent='✅ Sync เสร็จแล้ว!'; }
     renderCal(); updateStats(); updateRecent();
+    // Refresh modal ถ้าเปิดอยู่
+    if(S.mKey && document.getElementById('dayModal') && document.getElementById('dayModal').style.display !== 'none'){
+      renderTT(); recalcSession(S.mKey);
+      var comm = (S.sessions[S.mKey]||{}).notes||'';
+      var commentEl = document.getElementById('dComment');
+      if(commentEl && !commentEl.value) commentEl.value = comm;
+    }
     if(onDone) onDone();
   } catch(err){
     _syncInProgress = false;
@@ -7545,9 +7553,24 @@ function dtDeduplicateAll(){
 var DT_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var DT_SESSION_OPTS=['Sydney','Tokyo','London','New York'];
 
-function dtLoad(){
-  // ถ้ามี Sheet → DT.trades ใน memory คือ source of truth (โหลดจาก syncFromSheet แล้ว)
-  // ถ้าไม่มี Sheet → อ่าน localStorage ตามเดิม
+async function dtLoad(){
+  // ถ้ามี Supabase และ memory ว่าง → โหลดจาก Supabase โดยตรง
+  if(_supabase && (!DT.trades || !DT.trades.length)){
+    try{
+      var uid = _authSession && _authSession._sbUserId;
+      if(!uid){ var ss=await _supabase.auth.getSession(); uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id; }
+      if(uid){
+        var dtRes = await _supabase.from('data_trades').select('*')
+          .eq('user_id',uid).eq('portfolio',S.currentPortfolio)
+          .order('entry_date',{ascending:false});
+        if(!dtRes.error && dtRes.data && dtRes.data.length){
+          DT.trades = dtRes.data.map(function(r){ return _tradeFromRow(r); });
+          DT.trades.sort(function(a,b){ return (b.entryDate||b.date||'').localeCompare(a.entryDate||a.date||''); });
+          dtRender(); return;
+        }
+      }
+    }catch(e){ console.warn('[dtLoad supabase]', e.message); }
+  }
   if(_supabase && DT.trades && DT.trades.length) return; // memory มีข้อมูลแล้ว → ข้าม
   try{
     var raw=lsGet('dt_trades');
@@ -7609,6 +7632,7 @@ function dtRenderSessionTags(){
 
 
 // ── Session tag row for unified Data Mode form ──
+var DT_SESSION_COLORS={'Sydney':'var(--teal)','Tokyo':'var(--purple)','London':'var(--amber)','New York':'var(--accent)'};
 function dtRenderDtSessionTags(){
   var row=document.getElementById('dtSessionTagRow'); if(!row) return;
   var sessions=_customSessions&&_customSessions.length?_customSessions:
@@ -7616,12 +7640,14 @@ function dtRenderDtSessionTags(){
   row.innerHTML='';
   sessions.forEach(function(s){
     var active=DT.sessions.indexOf(s.label)>=0||DT.sessions.indexOf(s.id)>=0;
-    var bg=active?'var(--accent-dim)':'var(--bg-card)';
-    var col=active?'var(--accent)':'var(--text-secondary)';
+    var clr=DT_SESSION_COLORS[s.label]||'var(--accent)';
+    var bg=active?clr.replace(')',',0.15)').replace('var','rgba').replace('--',''):'none';
+    if(active) bg='var(--accent-dim)';
+    var col=active?clr:'var(--text-muted)';
     var span=document.createElement('span');
     span.className='tag'+(active?' active':'');
     span.dataset.lbl=s.label;
-    span.style.cssText='cursor:pointer;padding:2px 7px;border-radius:12px;font-size:10px;border:1px solid var(--border);background:'+bg+';color:'+col+';margin-right:3px;margin-bottom:3px;display:inline-block;';
+    span.style.cssText='cursor:pointer;padding:3px 9px;border-radius:12px;font-size:10px;font-weight:500;border:1px solid '+(active?clr:'var(--border)')+';background:'+(active?'color-mix(in srgb,'+clr+' 15%,transparent)':'none')+';color:'+col+';margin-right:3px;margin-bottom:3px;display:inline-block;transition:all .15s;';
     span.textContent=s.label;
     span.addEventListener('click',function(){ dtToggleDtSession(this); });
     row.appendChild(span);
@@ -10167,7 +10193,10 @@ if(document.readyState==='loading'){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;align-items:start;">
         <div>
           <div class="field-label" style="display:flex;justify-content:space-between;align-items:center;">Session <span style="font-size:9px;color:var(--accent);cursor:pointer;" onclick="addDtSessionTag()">+ Add</span></div>
-          <div id="dtSessionTagRow" style="display:flex;flex-wrap:nowrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;overflow-x:auto;"></div>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+  <div id="dtSessionTagRow" style="display:flex;flex-wrap:wrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;flex:1;"></div>
+  <button onclick="addDtSessionTag()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;white-space:nowrap;">+ Add</button>
+</div>
         </div>
         <div class="form-field">
           <label>Time in Position <span style="font-size:9px;color:var(--amber)">(auto)</span></label>
