@@ -1274,11 +1274,11 @@ var _supabase = null;
             <div class="form-field"><label>Close Date &amp; Time</label><input class="form-input" id="oCloseDate" type="datetime-local" oninput="calcTimeInPos();checkBEClose()"></div>
           </div>
           <div class="fg3">
-            <div class="form-field"><label>Entry</label><input class="form-input" id="oEntry" type="number" step="any" placeholder="1920.50" oninput="calcAll()"></div>
-            <div class="form-field"><label>TP <span id="oTPPoint" style="font-size:10px;font-family:var(--font-mono);"></span></label><input class="form-input" id="oTP" type="number" step="any" placeholder="1935.00" oninput="calcAll()"></div>
+            <div class="form-field"><label>Entry</label><input class="form-input" id="oEntry" type="number" step="any" placeholder="1920.50" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()"></div>
+            <div class="form-field"><label>TP <span id="oTPPoint" style="font-size:10px;font-family:var(--font-mono);"></span></label><input class="form-input" id="oTP" type="number" step="any" placeholder="1935.00" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()"></div>
             <div class="form-field">
               <label>SL <span id="oSLPoint" style="font-size:10px;color:var(--amber);font-family:var(--font-mono);"></span></label>
-              <input class="form-input" id="oSL" type="number" step="any" placeholder="1915.00" oninput="calcAll()">
+              <input class="form-input" id="oSL" type="number" step="any" placeholder="1915.00" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()">
             </div>
           </div>
 
@@ -1287,13 +1287,13 @@ var _supabase = null;
               <label style="display:flex;align-items:center;gap:4px;">Risk ($) <span id="oRiskWarnDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;" title="Risk เกิน!"></span></label>
               <input class="form-input" id="oRisk" type="number" step="any" placeholder="50" oninput="calcRiskLots()" style="transition:border-color .2s;">
             </div>
-            <div class="form-field"><label>Lots <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oLots" type="number" step="0.01" placeholder="1.00" oninput="calcAll()"></div>
-            <div class="form-field"><label>Fees ($) <span style="font-size:9px;color:var(--amber)">(auto/edit)</span></label><input class="form-input" id="oFees" type="number" step="any" placeholder="auto" oninput="calcPnl()"></div>
-            <div class="form-field"><label>Commission ($) <span style="font-size:9px;color:var(--amber)">(auto/edit)</span></label><input class="form-input" id="oComm" type="number" step="any" placeholder="auto" oninput="calcPnl()"></div>
+            <div class="form-field"><label>Lots <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oLots" type="number" step="0.01" placeholder="1.00" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()"></div>
+            <div class="form-field"><label>Fees ($) <span style="font-size:9px;color:var(--amber)">(auto/edit)</span></label><input class="form-input" id="oFees" type="number" step="any" placeholder="auto" oninput="this.dataset.manualEdit='1';calcPnl()" onchange="calcPnl()"></div>
+            <div class="form-field"><label>Commission ($) <span style="font-size:9px;color:var(--amber)">(auto/edit)</span></label><input class="form-input" id="oComm" type="number" step="any" placeholder="auto" oninput="this.dataset.manualEdit='1';calcPnl()" onchange="calcPnl()"></div>
           </div>
           <div id="riskWarnBar" style="display:none;background:var(--red-dim);border:1px solid var(--red);border-radius:var(--radius-sm);padding:5px 9px;font-size:10px;color:var(--red);margin-bottom:7px;align-items:center;justify-content:space-between;gap:8px;"><span id="riskWarnMsg">⚠️ SL ระยะเกิน Risk ที่ตั้งไว้! ตรวจสอบ Lot Size</span><button onclick="dismissRiskWarn()" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:var(--font-main);flex-shrink:0;">เพิกเฉย ✕</button></div>
           <div class="fg2">
-            <div class="form-field"><label>Close Price</label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()"></div>
+            <div class="form-field"><label>Close Price</label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()" onchange="calcPnl();checkBEClose()" onblur="calcPnl();checkBEClose()"></div>
             <div class="form-field"><label>P&L ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oPnl" type="number" step="any" placeholder="0.00" oninput="updateResult()"></div>
           </div>
           <div class="fg2">
@@ -3756,6 +3756,9 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     document.getElementById('oLots').value='';
     document.getElementById('oComm').value='';
     document.getElementById('oFees').value='';
+    // Reset manual edit flags for fees/comm
+    var feesEl=document.getElementById('oFees'); if(feesEl) delete feesEl.dataset.manualEdit;
+    var commEl=document.getElementById('oComm'); if(commEl) delete commEl.dataset.manualEdit;
     document.getElementById('oClose').value='';
     document.getElementById('oPnl').value='';
     document.getElementById('oMaxRR').value='';
@@ -3816,22 +3819,39 @@ function calcPnl(){
   var sl=parseFloat(document.getElementById('oSL').value)||0;
   var lots=parseFloat(document.getElementById('oLots').value)||0;
   var asset=document.getElementById('oAsset').value;
+
+  // Always sync side from entry/sl before calculating
+  if(en&&sl){ setSide(en>sl?'Long':'Short'); }
+
+  // Auto-calc fees/comm if not manually overridden
+  if(asset&&lots){
+    var feeRate=getFeesForAsset(asset);
+    var commRate=getCommForAsset(asset);
+    var feesEl=document.getElementById('oFees');
+    var commEl=document.getElementById('oComm');
+    if(feesEl&&(!feesEl.dataset.manualEdit)){ feesEl.value=(lots*feeRate).toFixed(2); }
+    if(commEl&&(!commEl.dataset.manualEdit)){ commEl.value=(lots*commRate).toFixed(2); }
+  }
+
   if(en&&lots&&asset){
     var pv=POINT_VAL[asset]||1;
     var dir=(S.side==='Long')?1:-1;
-    var refPrice=cl||0;
-    if(!refPrice&&tp&&S_result==='Win')  refPrice=tp;
-    if(!refPrice&&sl&&S_result==='Loss') refPrice=sl;
-    // Bug #1 FIX: result=BE ไม่มี close/tp/sl → ใช้ entry เป็น refPrice → gross=0
-    if(!refPrice&&S_result==='BE') refPrice=en;
-    if(refPrice){
-      var grossPnl=(refPrice-en)*lots*pv*dir;
-      var comm=parseFloat(document.getElementById('oComm').value)||0;
-      var fees=parseFloat(document.getElementById('oFees').value)||0;
-      var pnl=grossPnl-comm-fees;
-      document.getElementById('oPnl').value=pnl.toFixed(2);
-      if(cl) updateResult();
+
+    // Determine reference price — cl takes priority always
+    var refPrice=cl;
+    if(!refPrice){
+      if(tp&&S_result==='Win')       refPrice=tp;
+      else if(sl&&S_result==='Loss') refPrice=sl;
+      else                           refPrice=en; // BE → gross=0
     }
+
+    var grossPnl=(refPrice-en)*lots*pv*dir;
+    var comm=parseFloat(document.getElementById('oComm').value)||0;
+    var fees=parseFloat(document.getElementById('oFees').value)||0;
+    var pnl=grossPnl-comm-fees;
+    document.getElementById('oPnl').value=pnl.toFixed(2);
+    // Auto-set Result from PnL when Close is filled
+    if(cl){ updateResult(); }
   }
   autoSide();
 }
@@ -3846,14 +3866,18 @@ function calcTimeInPos(){
 function calcAll(){
   var asset=document.getElementById('oAsset').value;
   var lots=parseFloat(document.getElementById('oLots').value)||0;
-  // Fees = Exchange fee per lot (round trip)
+  // Fees = Exchange fee per lot (round trip) — clear manualEdit so auto-calc runs fresh
+  var feesEl=document.getElementById('oFees');
+  var commEl=document.getElementById('oComm');
+  if(feesEl) delete feesEl.dataset.manualEdit;
+  if(commEl) delete commEl.dataset.manualEdit;
   var feeRate=getFeesForAsset(asset);
   var fees=(lots*feeRate).toFixed(2);
-  document.getElementById('oFees').value=fees;
+  if(feesEl) feesEl.value=fees;
   if(document.getElementById('cFees')) document.getElementById('cFees').textContent='$'+fees;
   // Commission = platform fee per entry/round trip (per lot)
   var rate=getCommForAsset(asset),comm=(rate*lots).toFixed(2);
-  document.getElementById('oComm').value=comm;
+  if(commEl) commEl.value=comm;
   if(document.getElementById('cComm')) document.getElementById('cComm').textContent='$'+comm;
   var en=parseFloat(document.getElementById('oEntry').value)||0,sl=parseFloat(document.getElementById('oSL').value)||0,tp=parseFloat(document.getElementById('oTP').value)||0;
   // Show SL Point in ticks/points
@@ -5025,6 +5049,49 @@ function sendSheet(action, data){
     .catch(function(err){ console.warn('[sendSheet→Supabase]', action, err.message); });
 }
 
+// ── RLS hint toast (403 policy error) ────────────────────────
+var _rlsHintShown={};
+function _showRlsHint(table){
+  if(_rlsHintShown[table]) return;
+  _rlsHintShown[table]=true;
+  // Show a persistent modal with the SQL to fix RLS
+  var existing=document.getElementById('_rlsModal');
+  if(existing) return;
+  var modal=document.createElement('div');
+  modal.id='_rlsModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  var sql='-- รัน SQL นี้ใน Supabase → SQL Editor\n\n'
+    +'-- ตาราง trades\nCREATE POLICY IF NOT EXISTS "Users manage own trades"\n  ON public.trades FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง sessions\nCREATE POLICY IF NOT EXISTS "Users manage own sessions"\n  ON public.sessions FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง data_trades\nCREATE POLICY IF NOT EXISTS "Users manage own data_trades"\n  ON public.data_trades FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง journal\nCREATE POLICY IF NOT EXISTS "Users manage own journal"\n  ON public.journal FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง portfolios\nCREATE POLICY IF NOT EXISTS "Users manage own portfolios"\n  ON public.portfolios FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง assets\nCREATE POLICY IF NOT EXISTS "Users manage own assets"\n  ON public.assets FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง settings\nCREATE POLICY IF NOT EXISTS "Users manage own settings"\n  ON public.settings FOR ALL USING (auth.uid() = user_id)\n  WITH CHECK (auth.uid() = user_id);\n\n'
+    +'-- ตาราง profiles\nCREATE POLICY IF NOT EXISTS "Users view own profile"\n  ON public.profiles FOR SELECT USING (auth.uid() = id);\nCREATE POLICY IF NOT EXISTS "Users update own profile"\n  ON public.profiles FOR UPDATE USING (auth.uid() = id);';
+
+  modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--red);border-radius:13px;padding:20px 22px;width:min(640px,95vw);max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.8);">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+    +'<span style="font-size:18px;">🔒</span>'
+    +'<span style="font-size:14px;font-weight:700;color:var(--red);">Supabase RLS Policy ยังไม่ได้ตั้งค่า</span>'
+    +'</div>'
+    +'<p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">'
+    +'ข้อมูลไม่ถูกบันทึกเพราะตาราง <b style="color:var(--amber);">'+table+'</b> ยังไม่มี Row Level Security policy<br>'
+    +'กรุณาไปที่ <b>Supabase Dashboard → SQL Editor</b> แล้วรัน SQL ด้านล่างนี้:'
+    +'</p>'
+    +'<div style="position:relative;">'
+    +'<pre id="_rlsSql" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:10.5px;font-family:var(--font-mono);color:var(--teal);white-space:pre;overflow-x:auto;line-height:1.6;">'+sql+'</pre>'
+    +'<button onclick="var el=document.getElementById(\'_rlsSql\');navigator.clipboard.writeText(el.textContent).then(function(){this.textContent=\'✅ Copied!\';var b=this;setTimeout(function(){b.textContent=\'📋 Copy SQL\'},1500);}.bind(this)).catch(function(){});return false;" '
+    +'style="position:absolute;top:8px;right:8px;background:var(--accent);border:none;color:#fff;padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:var(--font-main);">📋 Copy SQL</button>'
+    +'</div>'
+    +'<div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px;">'
+    +'<button onclick="document.getElementById(\'_rlsModal\').remove()" '
+    +'style="background:var(--accent);border:none;color:#fff;padding:7px 18px;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font-main);font-weight:500;">เข้าใจแล้ว</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('mousedown',function(e){if(e.target===modal)modal.remove();});
+}
+
 // ── Convert trade object → Supabase row ───────────────────────
 function _tradeToRow(t, uid){
   // Parse entry date: extract date part (YYYY-MM-DD) and datetime
@@ -5090,8 +5157,15 @@ async function _sbDispatch(action, d){
 
   if(action === 'saveTrade'){
     var row = _tradeToRow(d, uid);
-    await _supabase.from('trades').upsert(row, { onConflict:'user_id,id' });
-    _sbRecalcSession(uid, port, d.date||d.date||'');
+    var tr = await _supabase.from('trades').upsert(row, { onConflict:'user_id,id' });
+    if(tr.error){
+      if(tr.error.code==='42501'||tr.error.message.includes('403')||tr.error.message.includes('policy')){
+        _showRlsHint('trades');
+      }
+      console.error('[saveTrade]', tr.error.message);
+      return;
+    }
+    _sbRecalcSession(uid, port, d.date||'');
   }
   else if(action === 'batchSaveTrades'){
     var rows = (d.trades||[]).map(function(t){ return _tradeToRow(Object.assign({},t,{portfolio:port}), uid); });
@@ -5118,7 +5192,13 @@ async function _sbDispatch(action, d){
       emotion:d.emotion||'', note:d.note||'',
       updated_at:new Date().toISOString()
     };
-    await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
+    var sr = await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
+    if(sr.error){
+      if(sr.error.code==='42501'||String(sr.error.message).includes('403')||String(sr.error.message).includes('policy')){
+        _showRlsHint('sessions');
+      }
+      console.error('[saveSession]', sr.error.message);
+    }
   }
   else if(action === 'saveNoteDay'){
     var jrow = {
@@ -5216,7 +5296,13 @@ async function _sbRecalcSession(uid, portfolio, date){
     avg_loss:losses?+(gl/losses).toFixed(2):0,
     max_dd:0, trade_count:total, updated_at:new Date().toISOString()
   };
-  await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
+  var sr = await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
+  if(sr && sr.error){
+    if(sr.error.code==='42501'||String(sr.error.message).includes('403')||String(sr.error.message).includes('policy')){
+      _showRlsHint('sessions');
+    }
+    console.error('[_sbRecalcSession]', sr.error.message);
+  }
 }
 
 // ── Asset sync to/from Supabase ────────────────────────────────
