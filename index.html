@@ -2058,26 +2058,31 @@ async function adminDeleteUser(userId, username){
 
 <script>
 // ── Row mappers — ต้องอยู่ต้น script เพื่อให้ทุก function เรียกได้ ──
+// GAP 3 FIX: _sessionFromRow was previously incomplete (missing netPnl/tradeCount/winRate etc.)
+// causing S.sessions to show blank values after sync. Now fully mapped.
 function _sessionFromRow(s){
   return {
-    pnl:          parseFloat(s.pnl)           || 0,
-    wins:         parseInt(s.wins)             || 0,
-    losses:       parseInt(s.losses)           || 0,
-    winRate:      parseFloat(s.win_rate)       || 0,
-    profitFactor: parseFloat(s.profit_factor)  || 0,
-    avgWin:       parseFloat(s.avg_win)        || 0,
-    avgLoss:      parseFloat(s.avg_loss)       || 0,
-    maxDD:        parseFloat(s.max_dd)         || 0,
-    trades:       parseInt(s.trade_count)      || 0,
-    emotion:      s.emotion    || '',
-    note:         s.note       || '',
-    notes:        s.note       || '',
-    trend:        s.trend      || '',
-    confirm:      s.confirm    || '',
-    sessions:     s.sessions   || '',
-    strategies:   s.strategies || '',
-    portfolio:    s.portfolio  || 'default',
-    date:         s.date       || ''
+    netPnl:        parseFloat(s.pnl)           || 0,
+    pnl:           parseFloat(s.pnl)           || 0,
+    wins:          parseInt(s.wins)             || 0,
+    losses:        parseInt(s.losses)           || 0,
+    winRate:       parseFloat(s.win_rate)       || 0,
+    profitFactor:  parseFloat(s.profit_factor)  || 0,
+    avgWin:        parseFloat(s.avg_win)        || 0,
+    avgLoss:       parseFloat(s.avg_loss)       || 0,
+    maxDD:         parseFloat(s.max_dd)         || 0,
+    trades:        parseInt(s.trade_count)      || 0,
+    tradeCount:    parseInt(s.trade_count)      || 0,
+    // GAP 7 FIX: sessions.emotion is text (emoji string) — keep as-is
+    emotion:       s.emotion    || '',
+    note:          s.note       || '',
+    notes:         s.note       || '',
+    trend:         s.trend      || '',
+    confirm:       s.confirm    || '',
+    sessions:      s.sessions   || '',
+    strategies:    s.strategies || '',
+    portfolio:     s.portfolio  || 'default',
+    date:          s.date       || ''
   };
 }
 function _tradeFromRow(r){
@@ -2351,6 +2356,80 @@ async function syncFromSheet(onDone){
       });
     }
 
+    // ── 7. data_trades (GAP 1 FIX) ───────────────────────────
+    // syncFromSheet previously skipped data_trades entirely → DT.trades was only read from
+    // localStorage, so Data Mode was empty on new devices / after clearing cache.
+    var dtRes = await _supabase.from('data_trades')
+      .select('*')
+      .eq('user_id', uid)
+      .eq('portfolio', S.currentPortfolio);
+    if(!dtRes.error && dtRes.data && dtRes.data.length){
+      // Map DB rows back to DT trade objects using _tradeFromRow then fix DT-specific fields
+      DT.trades = dtRes.data.map(function(r){
+        var t = _tradeFromRow(r);
+        // DT uses _id (internal), emo/disc (int sliders), entryTime (HH:mm), session (string)
+        t._id        = r.id;
+        t._src       = 'data';
+        // entryTime: extract HH:MM from entry_date datetime string
+        var _em = r.entry_date ? String(r.entry_date).match(/[T ]\s*(\d{1,2}:\d{2})/) : null;
+        t.entryTime  = _em ? _em[1] : '';
+        // GAP 4 FIX: emotion/discipline stored as int in trades table → map to emo/disc
+        t.emo        = r.emotion   != null ? parseInt(r.emotion)    : 5;
+        t.disc       = r.discipline!= null ? parseInt(r.discipline) : 5;
+        // session: stored as sessions column (comma-separated)
+        t.session    = r.sessions || '';
+        // day: compute from date
+        t.day        = r.date ? DT_DAYS[new Date(r.date).getDay()] : '';
+        // zoneMit: DB has no zone_mit column — store in note field convention or leave blank
+        t.zoneMit    = '';
+        t.portfolio  = r.portfolio || S.currentPortfolio;
+        return t;
+      });
+      DT.trades.sort(function(a,b){
+        return (a.date+(a.entryTime||''))<(b.date+(b.entryTime||''))?-1:1;
+      });
+    } else if(!dtRes.error) {
+      // No data_trades in DB yet — keep whatever is in memory (don't overwrite with empty)
+      if(!DT.trades || !DT.trades.length){
+        // Fall back to localStorage for offline-created trades
+        try{
+          var raw = lsGet('dt_trades');
+          DT.trades = raw ? JSON.parse(raw) : [];
+          if(!Array.isArray(DT.trades)) DT.trades = [];
+        }catch(e){ DT.trades = []; }
+      }
+    }
+
+    // ── 8. Profiles (GAP 5 FIX) ──────────────────────────────
+    // syncFromSheet previously never fetched profiles → login_count, last_login, role
+    // were not available in _authSession after sync.
+    if(_authSession){
+      var profRes = await _supabase.from('profiles')
+        .select('id,username,display_name,role,login_count,last_login')
+        .eq('id', uid)
+        .maybeSingle();
+      if(!profRes.error && profRes.data){
+        _authSession.role         = profRes.data.role         || _authSession.role || 'user';
+        _authSession.displayName  = profRes.data.display_name || _authSession.displayName || '';
+        _authSession.loginCount   = profRes.data.login_count  || 0;
+        _authSession.lastLogin    = profRes.data.last_login   || '';
+        // Persist updated session
+        try{
+          var saved = JSON.parse(localStorage.getItem('tj_session') || 'null');
+          if(saved){
+            saved.role        = _authSession.role;
+            saved.displayName = _authSession.displayName;
+            localStorage.setItem('tj_session', JSON.stringify(saved));
+          }
+        }catch(e){}
+        // Update UI if display name changed
+        var uname  = document.getElementById('userDisplayName');
+        var avatar = document.getElementById('userAvatar');
+        if(uname  && _authSession.displayName) uname.textContent  = _authSession.displayName;
+        if(avatar && _authSession.displayName) avatar.textContent = _authSession.displayName.charAt(0).toUpperCase();
+      }
+    }
+
     _syncInProgress = false;
     setConn(true);
     if(sheetRes){ sheetRes.style.color='var(--green)'; sheetRes.textContent='✅ Sync เสร็จแล้ว!'; }
@@ -2365,8 +2444,6 @@ async function syncFromSheet(onDone){
     if(onDone) onDone();
   }
 }
-
-// ── Row mappers: Supabase row → app object ─────────────────────
 
 
 
@@ -5155,11 +5232,23 @@ function _showRlsHint(table){
 }
 
 // ── Convert trade object → Supabase row ───────────────────────
+// GAP 4 FIX: Data Mode JS fields vs DB column name mismatches corrected:
+//   JS emo        → DB emotion (int)
+//   JS disc       → DB discipline (int)
+//   JS entryTime  → DB entry_date (full datetime or HH:MM appended to date)
+//   JS session    → DB sessions
+//   JS zoneMit    → no DB column; prepended to note as [ZoneMit: value]
 function _tradeToRow(t, uid){
   // Parse entry date: extract date part (YYYY-MM-DD) and datetime
   var dateStr = t.date || '';
   var entryDatetime = t.entryDate || '';
   var closeDatetime  = t.closeDate  || '';
+
+  // GAP 4 FIX: Data Mode stores time in entryTime (HH:MM) not entryDate
+  // Build full ISO datetime from date + entryTime if entryDate is missing
+  if(!entryDatetime && t.entryTime && dateStr){
+    entryDatetime = dateStr + 'T' + t.entryTime;
+  }
 
   // Robustly get entry date from entryDate if t.date is missing
   if(!dateStr && entryDatetime){
@@ -5167,8 +5256,31 @@ function _tradeToRow(t, uid){
     if(m) dateStr = m[1];
   }
 
+  // GAP 4 FIX: zoneMit has no DB column — encode in note if present
+  var noteVal = t.note || '';
+  if(t.zoneMit && t.zoneMit.trim()){
+    noteVal = '[ZoneMit:'+t.zoneMit.trim()+'] ' + noteVal;
+  }
+
+  // GAP 4 FIX: sessions from Data Mode uses t.session (single string); portfolio trades use t.sessions
+  var sessionsVal = t.sessions || t.session || '';
+
+  // GAP 4 FIX: emotion — Data Mode stores as t.emo (int 1-10); portfolio trades store as t.emotion (int)
+  // Always coerce to int for DB storage
+  var emotionInt = null;
+  if(t.emo != null && t.emo !== '')         emotionInt = parseInt(t.emo);
+  else if(t.emotion != null && t.emotion !== '') emotionInt = parseInt(t.emotion);
+
+  // GAP 4 FIX: discipline — same pattern as emotion
+  var disciplineInt = null;
+  if(t.disc != null && t.disc !== '')           disciplineInt = parseInt(t.disc);
+  else if(t.discipline != null && t.discipline !== '') {
+    var _d = parseInt(t.discipline);
+    disciplineInt = isNaN(_d) ? null : _d;
+  }
+
   return {
-    id:          String(t.id || (Date.now().toString(36) + Math.random().toString(36).slice(2,8))),
+    id:          String(t.id || t._id || (Date.now().toString(36) + Math.random().toString(36).slice(2,8))),
     user_id:     uid,
     portfolio:   t.portfolio || 'default',
     date:        dateStr,
@@ -5197,11 +5309,11 @@ function _tradeToRow(t, uid){
     trend:          t.trend     || null,
     zone:           t.zone      || null,
     confirm:        t.confirm   || null,
-    sessions:       t.sessions  || null,
-    emotion:        t.emotion   !== undefined ? parseInt(t.emotion) : null,
-    discipline:     t.discipline !== undefined ? parseInt(t.discipline) : null,
+    sessions:       sessionsVal || null,
+    emotion:        emotionInt,
+    discipline:     disciplineInt,
     fibo_level:     t.fiboLevel || null,
-    note:           t.note      || null,
+    note:           noteVal     || null,
     img_link:       t.imgLink   || null,
     is_deleted:     t.is_deleted || false,
     updated_at:     new Date().toISOString()
@@ -5209,9 +5321,25 @@ function _tradeToRow(t, uid){
 }
 
 // แปลง Supabase DB row → JS trade object (duplicate removed — defined at top of script)
+// GAP 4 FIX: added proper mapping for emo←emotion(int), disc←discipline(int),
+//            entryTime←entry_date(datetime), session←sessions, zoneMit←note prefix decode
 function _tradeFromRow(r){
+  // Decode entryTime from entry_date datetime string (HH:MM part)
+  var _entryTime = '';
+  if(r.entry_date){
+    var _em = String(r.entry_date).match(/[T ]\s*(\d{1,2}:\d{2})/);
+    if(_em) _entryTime = _em[1];
+  }
+  // Decode zoneMit from note prefix [ZoneMit:value]
+  var _noteRaw  = r.note || '';
+  var _zoneMit  = '';
+  var _noteClean = _noteRaw;
+  var _zmMatch   = _noteRaw.match(/^\[ZoneMit:([^\]]*)\]\s*/);
+  if(_zmMatch){ _zoneMit = _zmMatch[1]; _noteClean = _noteRaw.slice(_zmMatch[0].length); }
+
   return {
     id:            r.id            || '',
+    _id:           r.id            || '',
     portfolio:     r.portfolio     || 'default',
     date:          r.date          || '',
     asset:         r.asset         || '',
@@ -5231,6 +5359,8 @@ function _tradeFromRow(r){
     setupDuration: r.setup_duration|| '',
     entryDate:     r.entry_date    || '',
     closeDate:     r.close_date    || '',
+    // GAP 4 FIX: entryTime extracted from entry_date for Data Mode display
+    entryTime:     _entryTime,
     setupClass:    r.setup_class   || '',
     candle:        r.candle        || '',
     code:          r.code          || '',
@@ -5238,12 +5368,19 @@ function _tradeFromRow(r){
     tf:            r.tf            || '',
     trend:         r.trend         || '',
     zone:          r.zone          || '',
+    // GAP 4 FIX: zoneMit decoded from note prefix
+    zoneMit:       _zoneMit,
     confirm:       r.confirm       || '',
+    // GAP 4 FIX: sessions column maps to both sessions (portfolio) and session (data mode)
     sessions:      r.sessions      || '',
-    emotion:       r.emotion       != null ? r.emotion : 5,
-    discipline:    r.discipline    != null ? r.discipline : 5,
+    session:       r.sessions      || '',
+    // GAP 7 FIX: emotion in trades is int(1-10) — keep as int; expose as both emotion and emo
+    emotion:       r.emotion       != null ? parseInt(r.emotion)    : 5,
+    emo:           r.emotion       != null ? parseInt(r.emotion)    : 5,
+    discipline:    r.discipline    != null ? parseInt(r.discipline) : 5,
+    disc:          r.discipline    != null ? parseInt(r.discipline) : 5,
     fiboLevel:     r.fibo_level    || '',
-    note:          r.note          || '',
+    note:          _noteClean,
     imgLink:       r.img_link      || '',
     is_deleted:    r.is_deleted    || false
   };
@@ -5347,7 +5484,8 @@ async function _sbDispatch(action, d){
   }
   else if(action === 'saveDataTrade'){
     var drow = _tradeToRow(d, uid);
-    drow.id = d.id || (Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+    // GAP 4 FIX: Data Mode uses _id as primary key — ensure it is used as the row id
+    drow.id = d._id || d.id || (Date.now().toString(36)+Math.random().toString(36).slice(2,8));
     await _supabase.from('data_trades').upsert(drow, { onConflict:'user_id,id' });
   }
   else if(action === 'deleteDataTrade'){
@@ -5381,6 +5519,9 @@ async function _sbDispatch(action, d){
 }
 
 // ── Auto-recalc session after trade changes ────────────────────
+// GAP 2 FIX: Previously _sbRecalcSession would upsert a new session row with blank
+// emotion/note/trend/confirm, overwriting user-entered values on every trade change.
+// Now we fetch existing session first and only patch the computed stat columns.
 async function _sbRecalcSession(uid, portfolio, date){
   if(!date) return;
   var res = await _supabase.from('trades').select('pnl')
@@ -5395,12 +5536,30 @@ async function _sbRecalcSession(uid, portfolio, date){
   var total=wins+losses;
   var wr=total?Math.round(wins/total*100):0;
   var pf=gl>0?+(gp/gl).toFixed(2):(gp>0?999:0);
+
+  // GAP 2 FIX: fetch existing session row to preserve emotion/note/trend/confirm/sessions/strategies
+  var existingSess = null;
+  try{
+    var exRes = await _supabase.from('sessions')
+      .select('emotion,note,trend,confirm,sessions,strategies')
+      .eq('user_id', uid).eq('portfolio', portfolio).eq('date', date)
+      .maybeSingle();
+    if(!exRes.error && exRes.data) existingSess = exRes.data;
+  }catch(e){}
+
   var srow={
     user_id:uid, portfolio:portfolio, date:date,
     pnl:+pnl.toFixed(2), wins:wins, losses:losses, win_rate:wr,
     profit_factor:pf, avg_win:wins?+(gp/wins).toFixed(2):0,
     avg_loss:losses?+(gl/losses).toFixed(2):0,
-    max_dd:0, trade_count:total, updated_at:new Date().toISOString()
+    max_dd:0, trade_count:total, updated_at:new Date().toISOString(),
+    // Preserve existing user-entered fields — never overwrite with blank
+    emotion:   (existingSess && existingSess.emotion)    || '',
+    note:      (existingSess && existingSess.note)       || '',
+    trend:     (existingSess && existingSess.trend)      || '',
+    confirm:   (existingSess && existingSess.confirm)    || '',
+    sessions:  (existingSess && existingSess.sessions)   || '',
+    strategies:(existingSess && existingSess.strategies) || ''
   };
   var sr = await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
   if(sr && sr.error){
@@ -7380,6 +7539,14 @@ function dtLoad(){
     if(!Array.isArray(DT.trades)) DT.trades=[];
     var needSave=false;
     DT.trades.forEach(function(t){
+      // GAP 4 FIX: normalise emo/disc fields for older localStorage entries that stored as 'emotion'/'discipline'
+      if(t.emotion != null && t.emo == null){ t.emo = parseInt(t.emotion) || 5; needSave = true; }
+      if(t.discipline != null && t.disc == null){ t.disc = parseInt(t.discipline) || 5; needSave = true; }
+      // Ensure _id exists
+      if(!t._id){ t._id = _uuid(); needSave = true; }
+      // GAP 4 FIX: normalise session → single string
+      if(Array.isArray(t.session)) { t.session = t.session.join(', '); needSave = true; }
+      if(t.sessions && !t.session){ t.session = t.sessions; needSave = true; }
       if(t.result==='m'||t.result==='M') { t.result='Miss'; needSave=true; }
     });
     if(needSave && !_supabase) lsSet('dt_trades',JSON.stringify(DT.trades));
@@ -7887,8 +8054,22 @@ function dtDoSaveTrade(){
     DT.editIdx=-1;
     dtRender();
     showToast('💾 บันทึก Trade สำเร็จ','success');
-    // Sync to Sheet if connected
-    if(_supabase){ try{ sendSheet('saveDataTrade',t); }catch(se){ console.warn('Supabase sync failed:',se); } }
+    // GAP 4 FIX: prepare Supabase-compatible object before sending
+    // _tradeToRow now handles emo→emotion, disc→discipline, entryTime→entry_date, session→sessions
+    if(_supabase){
+      try{
+        var sbTrade = Object.assign({}, t, {
+          // Ensure id is set (use _id for data trades)
+          id: t._id || t.id || _uuid(),
+          // Map DT fields to portfolio-style fields that _tradeToRow understands
+          entryDate: (t.date && t.entryTime) ? t.date + 'T' + t.entryTime : (t.entryDate || ''),
+          sessions:  t.session || t.sessions || '',
+          emotion:   t.emo  != null ? parseInt(t.emo)  : (t.emotion  != null ? parseInt(t.emotion)  : null),
+          discipline:t.disc != null ? parseInt(t.disc) : (t.discipline!= null ? parseInt(t.discipline): null)
+        });
+        sendSheet('saveDataTrade', sbTrade);
+      }catch(se){ console.warn('Supabase sync failed:',se); }
+    }
   }catch(err){ console.error('dtDoSaveTrade error:',err); showToast('Error: '+err.message,'error'); }
 }
 
@@ -8214,6 +8395,38 @@ function dtSyncImportToSheet(trades){
 }
 
 // ── Filter helper ──
+// GAP 6 FIX: dtFiltered previously read non-current portfolio trades from localStorage only.
+// If a portfolio was never opened on this device, its localStorage key is absent → data missing.
+// Now: when combined/port_only mode, check localStorage first; if missing AND supabase connected,
+// trigger async load for that portfolio (result updates on next render cycle).
+var _dtPortLoadPending = {}; // tracks portfolios currently being fetched
+
+function _dtLazyLoadPortTrades(pid){
+  if(!_supabase) return;
+  if(_dtPortLoadPending[pid]) return; // already fetching
+  var key = 'port_'+pid+'_t';
+  if(lsGet(key)) return; // already cached in localStorage
+  _dtPortLoadPending[pid] = true;
+  var uid = _authSession && _authSession._sbUserId;
+  if(!uid){ _dtPortLoadPending[pid] = false; return; }
+  _supabase.from('trades').select('*')
+    .eq('user_id', uid).eq('portfolio', pid).eq('is_deleted', false)
+    .then(function(res){
+      _dtPortLoadPending[pid] = false;
+      if(res.error || !res.data || !res.data.length) return;
+      var byDate = {};
+      res.data.forEach(function(r){
+        var t = _tradeFromRow(r);
+        if(!byDate[t.date]) byDate[t.date] = [];
+        byDate[t.date].push(t);
+      });
+      try{ lsSet(key, JSON.stringify(byDate)); }catch(e){}
+      // Re-render if Data Mode is open
+      if(_dtPanelOpen) dtRender();
+    })
+    .catch(function(){ _dtPortLoadPending[pid] = false; });
+}
+
 function dtFiltered(){
   dtLoad();
   function gv(id){ return (document.getElementById(id)||{}).value||''; }
@@ -8239,7 +8452,13 @@ function dtFiltered(){
     var portsToLoad=_dtSelectedPorts.length>0?_dtSelectedPorts:Object.keys(S.portfolios||{'default':{}});
     portsToLoad.forEach(function(pid){
       var portTrades={};
-      try{ portTrades=JSON.parse(lsGet('port_'+pid+'_t')||'{}'); }catch(e){}
+      var _cached = lsGet('port_'+pid+'_t');
+      if(_cached){
+        try{ portTrades=JSON.parse(_cached); }catch(e){}
+      } else {
+        // GAP 6 FIX: localStorage missing → trigger background fetch from Supabase
+        _dtLazyLoadPortTrades(pid);
+      }
       Object.keys(portTrades).forEach(function(dk){
         (portTrades[dk]||[]).forEach(function(t){
           // Map entryDate (portfolio field) → entryTime (data table field) for display
