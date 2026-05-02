@@ -1778,10 +1778,10 @@ function _loginSuccess(session){
   var ov = document.getElementById('authOverlay');
   ov.style.transition = 'opacity .35s'; ov.style.opacity = '0';
   setTimeout(function(){ ov.style.display = 'none'; ov.style.opacity = '1'; }, 380);
-  if(_supabase && !window._initSyncDone){
-    setConn(true); syncFromSheet();
-  } else if(_supabase){
+  if(_supabase){
+    window._initSyncDone = true;
     setConn(true);
+    syncFromSheet();
   }
 }
 
@@ -1805,7 +1805,7 @@ async function _authInit(){
     _authSession = session;
     _authApply(session);
     document.getElementById('authOverlay').style.display = 'none';
-      if(!session.scriptUrl && !localUrl) _showSetupSheetOverlay();
+    if(_supabase && !window._initSyncDone){ setConn(true); syncFromSheet(); }
     return;
   }
 
@@ -1859,6 +1859,7 @@ async function authDoLogin(){
     // Supabase ใช้ email เป็น identifier — รองรับทั้ง email เต็มและ username@domain
     // ถ้า user พิมพ์แค่ username (ไม่มี @) ต้องเพิ่ม domain สมมติ หรือใช้ email จริง
     var emailInput = user.indexOf('@') >= 0 ? user : user + '@tradelog.local';
+    // Supabase ต้องการ email format ที่ถูกต้อง — tradelog.local ใช้ได้
     var res = await _supabase.auth.signInWithPassword({ email: emailInput, password: pass });
     if(res.error){
       err.textContent = '❌ ' + (res.error.message || 'Username หรือ Password ไม่ถูกต้อง');
