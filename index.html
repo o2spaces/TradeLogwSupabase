@@ -2084,7 +2084,8 @@ function _sessionFromRow(s){
     sessions:      s.sessions   || '',
     strategies:    s.strategies || '',
     portfolio:     s.portfolio  || 'default',
-    date:          s.date       || ''
+    date:          s.date       || '',
+    notesHistory:  (function(){ try{ return s.notes_history ? JSON.parse(s.notes_history)||[] : []; }catch(e){return [];} })()
   };
 }
 function _tradeFromRow(r){
@@ -3797,12 +3798,28 @@ function _dedupTrades(arr){
 }
 function openDay(dt){
   S.mKey=dk(dt);S.mTrades=_dedupTrades(JSON.parse(JSON.stringify(S.trades[S.mKey]||[])));
-  // sync cleaned list back
   if(S.trades[S.mKey] && S.mTrades.length !== S.trades[S.mKey].length){
     S.trades[S.mKey]=S.mTrades; persistPort();
   }
   document.getElementById('mDayTitle').textContent=fmtD(dt);
-  document.getElementById('dComment').value=(S.sessions[S.mKey]||{}).notes||'';
+  document.getElementById('dComment').value=(S.sessions[S.mKey]||{}).notes||(S.sessions[S.mKey]||{}).note||'';
+  // ถ้ายังไม่มี session data ใน memory → ดึงจาก Supabase แบบ async
+  if(_supabase && !S.sessions[S.mKey]){
+    (async function(){
+      try{
+        var uid=_authSession&&_authSession._sbUserId;
+        if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
+        if(uid){
+          var r=await _supabase.from('sessions').select('*').eq('user_id',uid).eq('portfolio',S.currentPortfolio).eq('date',S.mKey).maybeSingle();
+          if(r.data){ S.sessions[S.mKey]=_sessionFromRow(r.data); }
+          var n=S.sessions[S.mKey]&&(S.sessions[S.mKey].notes||S.sessions[S.mKey].note)||'';
+          var commentEl=document.getElementById('dComment');
+          if(commentEl&&!commentEl.value&&n) commentEl.value=n;
+          renderCommentHistory(S.mKey);
+        }
+      }catch(e){console.warn('[openDay session fetch]',e.message);}
+    })();
+  }
   var savedEmo=(S.sessions[S.mKey]||{}).emotion||'';
   if(savedEmo){var ei=EMO_LIST.indexOf(savedEmo);if(ei>=0){setEmoByIdx(ei);mEmoSetByIdx(ei);}else{mEmoSetByIdx(0);}}
   else{mEmoSetByIdx(4);} // default Calm
@@ -5457,6 +5474,7 @@ async function _sbDispatch(action, d){
       emotion:d.emotion||'', note:d.note||d.notes||'',
       trend:d.trend||'', confirm:d.confirm||'',
       sessions:d.sessions||'', strategies:d.strategies||'',
+      notes_history:JSON.stringify(d.notesHistory||[]),
       updated_at:new Date().toISOString()
     };
     var sr = await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
@@ -8064,7 +8082,7 @@ function dtSaveTrade(){
     emo:DT.emo,disc:DT.disc,
     discipline:'วินัย '+DT.disc+'/10',
     note:gv('dtNote'),imgLink:gv('dtImgLink'),
-    portfolio: 'data_'+(S.currentPortfolio||'default'),
+    portfolio: S.currentPortfolio||'default',
     _src:'data'
   };
   _dtPendingTrade=t;
@@ -10192,11 +10210,8 @@ if(document.readyState==='loading'){
       <!-- Session + Entry Date/Time -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;align-items:start;">
         <div>
-          <div class="field-label" style="display:flex;justify-content:space-between;align-items:center;">Session <span style="font-size:9px;color:var(--accent);cursor:pointer;" onclick="addDtSessionTag()">+ Add</span></div>
-          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-  <div id="dtSessionTagRow" style="display:flex;flex-wrap:wrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;flex:1;"></div>
-  <button onclick="addDtSessionTag()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;white-space:nowrap;">+ Add</button>
-</div>
+          <div class="field-label">Session (auto)</div>
+          <div id="dtSessionTagRow" style="display:flex;flex-wrap:wrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;"></div>
         </div>
         <div class="form-field">
           <label>Time in Position <span style="font-size:9px;color:var(--amber)">(auto)</span></label>
