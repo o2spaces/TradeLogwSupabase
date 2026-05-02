@@ -2057,6 +2057,63 @@ async function adminDeleteUser(userId, username){
 </script>
 
 <script>
+// ── Row mappers — ต้องอยู่ต้น script เพื่อให้ทุก function เรียกได้ ──
+function _sessionFromRow(s){
+  return {
+    pnl:          parseFloat(s.pnl)           || 0,
+    wins:         parseInt(s.wins)             || 0,
+    losses:       parseInt(s.losses)           || 0,
+    winRate:      parseFloat(s.win_rate)       || 0,
+    profitFactor: parseFloat(s.profit_factor)  || 0,
+    avgWin:       parseFloat(s.avg_win)        || 0,
+    avgLoss:      parseFloat(s.avg_loss)       || 0,
+    maxDD:        parseFloat(s.max_dd)         || 0,
+    trades:       parseInt(s.trade_count)      || 0,
+    emotion:      s.emotion   || '',
+    note:         s.note      || '',
+    portfolio:    s.portfolio || 'default',
+    date:         s.date      || ''
+  };
+}
+function _tradeFromRow(r){
+  return {
+    id:            r.id            || '',
+    portfolio:     r.portfolio     || 'default',
+    date:          r.date          || '',
+    asset:         r.asset         || '',
+    side:          r.side          || 'Long',
+    lots:          parseFloat(r.lots)       || 0,
+    entry:         parseFloat(r.entry)      || 0,
+    close:         parseFloat(r.close)      || 0,
+    tp:            parseFloat(r.tp)         || 0,
+    sl:            parseFloat(r.sl)         || 0,
+    pnl:           parseFloat(r.pnl)        || 0,
+    fees:          parseFloat(r.fees)       || 0,
+    commission:    parseFloat(r.commission) || 0,
+    result:        r.result        || '',
+    risk:          r.risk          || '',
+    maxRR:         r.max_rr        || '',
+    timeInPos:     r.time_in_pos   || '',
+    setupDuration: r.setup_duration|| '',
+    entryDate:     r.entry_date    || '',
+    closeDate:     r.close_date    || '',
+    setupClass:    r.setup_class   || '',
+    candle:        r.candle        || '',
+    code:          r.code          || '',
+    mode:          r.mode          || '',
+    tf:            r.tf            || '',
+    trend:         r.trend         || '',
+    zone:          r.zone          || '',
+    confirm:       r.confirm       || '',
+    sessions:      r.sessions      || '',
+    emotion:       r.emotion       != null ? r.emotion : 5,
+    discipline:    r.discipline    != null ? r.discipline : 5,
+    fiboLevel:     r.fibo_level    || '',
+    note:          r.note          || '',
+    imgLink:       r.img_link      || '',
+    is_deleted:    r.is_deleted    || false
+  };
+}
 // Fees = Exchange/broker fee per lot (round trip)
 var FEES={NQ1:2.80,MNQ1:0.74,GC1:3.24,MGC1:1.24,'XAU/USD':0,EURUSD:0,GBPUSD:0,USDJPY:0,BTCUSD:0};
 // Commission = Topstep platform fee per entry (round trip, fixed per trade)
@@ -5146,26 +5203,7 @@ function _tradeToRow(t, uid){
   };
 }
 
-// แปลง Supabase DB row → JS session object
-function _sessionFromRow(s){
-  return {
-    pnl:          parseFloat(s.pnl)           || 0,
-    wins:         parseInt(s.wins)             || 0,
-    losses:       parseInt(s.losses)           || 0,
-    winRate:      parseFloat(s.win_rate)       || 0,
-    profitFactor: parseFloat(s.profit_factor)  || 0,
-    avgWin:       parseFloat(s.avg_win)        || 0,
-    avgLoss:      parseFloat(s.avg_loss)       || 0,
-    maxDD:        parseFloat(s.max_dd)         || 0,
-    trades:       parseInt(s.trade_count)      || 0,
-    emotion:      s.emotion  || '',
-    note:         s.note     || '',
-    portfolio:    s.portfolio || 'default',
-    date:         s.date      || ''
-  };
-}
-
-// แปลง Supabase DB row → JS trade object
+// แปลง Supabase DB row → JS trade object (duplicate removed — defined at top of script)
 function _tradeFromRow(r){
   return {
     id:            r.id            || '',
