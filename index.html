@@ -912,6 +912,7 @@ var _supabase = null;
               <th id="dth_setupClass" onclick="dtSortBy('setupClass')" style="padding:7px 6px;text-align:left;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Class <span id="dthi_setupClass" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_candle" onclick="dtSortBy('candle')" style="padding:7px 6px;text-align:left;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Candle <span id="dthi_candle" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_zone" onclick="dtSortBy('zone')" style="padding:7px 6px;text-align:left;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Zone <span id="dthi_zone" style="font-size:9px;opacity:.5;"></span></th>
+              <th id="dth_zoneMit" onclick="dtSortBy('zoneMit')" style="padding:7px 6px;text-align:left;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Mit.Zone <span id="dthi_zoneMit" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_confirm" onclick="dtSortBy('confirm')" style="padding:7px 6px;text-align:left;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Confirm <span id="dthi_confirm" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_entry" onclick="dtSortBy('entry')" style="padding:7px 6px;text-align:right;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Entry <span id="dthi_entry" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_tp" onclick="dtSortBy('tp')" style="padding:7px 6px;text-align:right;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">TP <span id="dthi_tp" style="font-size:9px;opacity:.5;"></span></th>
@@ -5256,11 +5257,23 @@ function _tradeToRow(t, uid){
     if(m) dateStr = m[1];
   }
 
-  // GAP 4 FIX: zoneMit has no DB column — encode in note if present
-  var noteVal = t.note || '';
-  if(t.zoneMit && t.zoneMit.trim()){
-    noteVal = '[ZoneMit:'+t.zoneMit.trim()+'] ' + noteVal;
+  // FIX 1: Build close_date from closeDate field (datetime-local input value)
+  // closeDate from DT form is already ISO format "YYYY-MM-DDTHH:mm"
+  if(!closeDatetime && t.closeDate && t.closeDate.trim()){
+    closeDatetime = t.closeDate.trim();
   }
+
+  // FIX 2: zoneMit (Mitigated Zone form field) → DB column "trend"
+  // The DB schema uses "trend" column to store Mitigated Zone data.
+  // Portfolio trades use oTrend (also called Mitigated Zone in the UI).
+  // We must NOT encode zoneMit in note anymore — use the proper "trend" column.
+  var trendVal = t.zoneMit || t.trend || '';
+
+  // zoneMit has no separate DB column — it IS the trend column
+  // Clear the note encoding fallback (remove [ZoneMit:...] prefix if already encoded)
+  var noteVal = t.note || '';
+  // Strip old [ZoneMit:...] prefix if present (backward compat cleanup)
+  noteVal = noteVal.replace(/^\[ZoneMit:[^\]]*\]\s*/, '');
 
   // GAP 4 FIX: sessions from Data Mode uses t.session (single string); portfolio trades use t.sessions
   var sessionsVal = t.sessions || t.session || '';
@@ -5306,7 +5319,8 @@ function _tradeToRow(t, uid){
     code:           t.code      || null,
     mode:           t.mode      || null,
     tf:             t.tf        || null,
-    trend:          t.trend     || null,
+    // FIX 2: "trend" column stores Mitigated Zone (zoneMit) value — not a separate trend field
+    trend:          trendVal    || null,
     zone:           t.zone      || null,
     confirm:        t.confirm   || null,
     sessions:       sessionsVal || null,
@@ -5330,12 +5344,13 @@ function _tradeFromRow(r){
     var _em = String(r.entry_date).match(/[T ]\s*(\d{1,2}:\d{2})/);
     if(_em) _entryTime = _em[1];
   }
-  // Decode zoneMit from note prefix [ZoneMit:value]
+  // Decode note — remove old [ZoneMit:...] prefix if it was encoded before this fix
   var _noteRaw  = r.note || '';
-  var _zoneMit  = '';
-  var _noteClean = _noteRaw;
-  var _zmMatch   = _noteRaw.match(/^\[ZoneMit:([^\]]*)\]\s*/);
-  if(_zmMatch){ _zoneMit = _zmMatch[1]; _noteClean = _noteRaw.slice(_zmMatch[0].length); }
+  var _noteClean = _noteRaw.replace(/^\[ZoneMit:[^\]]*\]\s*/, '');
+
+  // FIX 2: DB "trend" column stores Mitigated Zone value
+  // Expose as both zoneMit (DT form) and trend (portfolio form) for full compat
+  var _zoneMit = r.trend || '';
 
   return {
     id:            r.id            || '',
@@ -5358,6 +5373,7 @@ function _tradeFromRow(r){
     timeInPos:     r.time_in_pos   || '',
     setupDuration: r.setup_duration|| '',
     entryDate:     r.entry_date    || '',
+    // FIX 1: closeDate correctly mapped from close_date column
     closeDate:     r.close_date    || '',
     // GAP 4 FIX: entryTime extracted from entry_date for Data Mode display
     entryTime:     _entryTime,
@@ -5366,15 +5382,15 @@ function _tradeFromRow(r){
     code:          r.code          || '',
     mode:          r.mode          || '',
     tf:            r.tf            || '',
-    trend:         r.trend         || '',
-    zone:          r.zone          || '',
-    // GAP 4 FIX: zoneMit decoded from note prefix
+    // FIX 2: trend column = Mitigated Zone — expose as both zoneMit and trend
+    trend:         _zoneMit,
     zoneMit:       _zoneMit,
+    zone:          r.zone          || '',
     confirm:       r.confirm       || '',
     // GAP 4 FIX: sessions column maps to both sessions (portfolio) and session (data mode)
     sessions:      r.sessions      || '',
     session:       r.sessions      || '',
-    // GAP 7 FIX: emotion in trades is int(1-10) — keep as int; expose as both emotion and emo
+    // GAP 7 FIX: emotion in trades is int(1-10) — keep as int
     emotion:       r.emotion       != null ? parseInt(r.emotion)    : 5,
     emo:           r.emotion       != null ? parseInt(r.emotion)    : 5,
     discipline:    r.discipline    != null ? parseInt(r.discipline) : 5,
@@ -7944,6 +7960,17 @@ function dtOpenEdit(visIdx){
   sv('dtClose',t.close||'');sv('dtFees',t.fees||'');sv('dtComm',t.commission||'');
   sv('dtMaxRR',t.maxRR);sv('dtNote',t.note);sv('dtImgLink',t.imgLink);
   sv('dtSetupDur',t.setupDuration);
+  // FIX 1: Restore closeDate to Close Date & Time field
+  var cdEl=document.getElementById('dtCloseDate');
+  if(cdEl){
+    // closeDate may be "YYYY-MM-DDTHH:mm" or full ISO — normalize to datetime-local format
+    var _cdVal=t.closeDate||'';
+    if(_cdVal){
+      // Strip seconds/ms so datetime-local input accepts it
+      _cdVal=_cdVal.substring(0,16);
+    }
+    cdEl.value=_cdVal;
+  }
   // Entry date from entryTime + date — always restore saved value, never use current time
   var edEl=document.getElementById('dtEntryDate');
   if(edEl){
@@ -7996,9 +8023,13 @@ function dtSaveTrade(){
     asset:assetVal,side:DT.side,
     entryTime:timeOnly,duration:'',setupDuration:gv('dtSetupDur'),
     timeInPos:gv('dtTimePos'),
+    // FIX 1: closeDate ไม่ถูกอ่านจากฟอร์ม — เพิ่มแล้ว
+    closeDate:gv('dtCloseDate'),
     close:gv('dtClose'),fees:gv('dtFees'),commission:gv('dtComm'),
     mode:gs('dtMode'),code:gs('dtCode'),tf:gs('dtTF'),
     setupClass:gs('dtSetupClass'),candle:gs('dtCandle'),
+    // FIX 2: dtMitZone (Mitigated Zone) → field ชื่อ zoneMit ใน JS → DB column "trend"
+    // ตั้งชื่อให้ชัดเจน: zoneMit = ค่าจาก Mitigated Zone selector
     zoneMit:gs('dtMitZone'),zone:gs('dtZone'),confirm:gs('dtConfirm'),
     entry:gv('dtEntry'),tp:gv('dtTP'),sl:gv('dtSL2'),
     risk:gv('dtRisk'),lots:gv('dtLots'),pnl:gv('dtPnl'),
@@ -8007,7 +8038,7 @@ function dtSaveTrade(){
     emo:DT.emo,disc:DT.disc,
     discipline:'วินัย '+DT.disc+'/10',
     note:gv('dtNote'),imgLink:gv('dtImgLink'),
-    portfolio: 'data_'+(S.currentPortfolio||'default'),  // Bug #8 FIX: prefix data_ + portfolio แทน hardcode 'data'
+    portfolio: 'data_'+(S.currentPortfolio||'default'),
     _src:'data'
   };
   _dtPendingTrade=t;
@@ -8660,6 +8691,7 @@ function dtRender(){
       +'<td style="padding:6px;font-size:10px;">'+(t.setupClass||'-')+'</td>'
       +'<td style="padding:6px;font-size:10px;">'+(t.candle||'-')+'</td>'
       +'<td style="padding:6px;font-size:10px;">'+(t.zone||'-')+'</td>'
+      +'<td style="padding:6px;font-size:10px;color:var(--amber);">'+(t.zoneMit||t.trend||'-')+'</td>'
       +'<td style="padding:6px;font-size:10px;">'+(t.confirm||'-')+'</td>'
       +'<td style="padding:6px;text-align:right;font-family:var(--font-mono);font-size:10px;">'+(t.entry||'-')+'</td>'
       +'<td style="padding:6px;text-align:right;font-family:var(--font-mono);font-size:10px;color:var(--green);">'+(t.tp||'-')+'</td>'
