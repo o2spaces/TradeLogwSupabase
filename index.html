@@ -1736,8 +1736,11 @@ function _uuid(){
 // ── Helper: ดึง profile (role, display_name) จาก Supabase ──────
 async function _fetchProfile(userId){
   if(!_supabase) return null;
-  var res = await _supabase.from('profiles').select('role,display_name,username').eq('id', userId).single();
-  return res.data || null;
+  try{
+    var res = await _supabase.from('profiles').select('role,display_name,username').eq('id', userId).maybeSingle();
+    if(res.error){ console.warn('[_fetchProfile]', res.error.message); return null; }
+    return res.data || null;
+  }catch(e){ console.warn('[_fetchProfile]', e.message); return null; }
 }
 
 // ── Helper: สร้าง/อัปเดต profile row ──────────────────────────
