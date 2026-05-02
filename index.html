@@ -2069,10 +2069,15 @@ function _sessionFromRow(s){
     avgLoss:      parseFloat(s.avg_loss)       || 0,
     maxDD:        parseFloat(s.max_dd)         || 0,
     trades:       parseInt(s.trade_count)      || 0,
-    emotion:      s.emotion   || '',
-    note:         s.note      || '',
-    portfolio:    s.portfolio || 'default',
-    date:         s.date      || ''
+    emotion:      s.emotion    || '',
+    note:         s.note       || '',
+    notes:        s.note       || '',
+    trend:        s.trend      || '',
+    confirm:      s.confirm    || '',
+    sessions:     s.sessions   || '',
+    strategies:   s.strategies || '',
+    portfolio:    s.portfolio  || 'default',
+    date:         s.date       || ''
   };
 }
 function _tradeFromRow(r){
@@ -5288,7 +5293,9 @@ async function _sbDispatch(action, d){
       profit_factor:parseFloat(d.profitFactor)||0,
       avg_win:parseFloat(d.avgWin)||0, avg_loss:parseFloat(d.avgLoss)||0,
       max_dd:parseFloat(d.maxDD)||0, trade_count:parseInt(d.tradeCount)||0,
-      emotion:d.emotion||'', note:d.note||'',
+      emotion:d.emotion||'', note:d.note||d.notes||'',
+      trend:d.trend||'', confirm:d.confirm||'',
+      sessions:d.sessions||'', strategies:d.strategies||'',
       updated_at:new Date().toISOString()
     };
     var sr = await _supabase.from('sessions').upsert(srow, { onConflict:'user_id,portfolio,date' });
