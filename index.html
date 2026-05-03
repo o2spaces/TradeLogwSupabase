@@ -2088,10 +2088,19 @@ function _sessionFromRow(s){
   };
 }
 function _tradeFromRow(r){
+  // compute day + entryTime from entry_date if not stored
+  var _edate = r.entry_date || r.date || '';
+  var _day   = r.day || (_edate ? (DT_DAYS||['Sun','Mon','Tue','Wed','Thu','Fri','Sat'])[new Date(_edate.substring(0,10)+'T12:00').getDay()]||'' : '');
+  var _etime = r.entryTime || (_edate && _edate.length>=16 ? _edate.substring(11,16) : '');
+  var _sess  = r.sessions || r.session || '';
   return {
+    _id:           r.id            || '',
     id:            r.id            || '',
+    _src:          'data',
     portfolio:     r.portfolio     || 'default',
-    date:          r.date          || '',
+    date:          r.date          || (_edate?_edate.substring(0,10):''),
+    day:           _day,
+    entryTime:     _etime,
     asset:         r.asset         || '',
     side:          r.side          || 'Long',
     lots:          parseFloat(r.lots)       || 0,
@@ -2116,10 +2125,14 @@ function _tradeFromRow(r){
     tf:            r.tf            || '',
     trend:         r.trend         || '',
     zone:          r.zone          || '',
+    zoneMit:       r.trend         || '',
     confirm:       r.confirm       || '',
-    sessions:      r.sessions      || '',
-    emotion:       r.emotion       != null ? r.emotion : 5,
-    discipline:    r.discipline    != null ? r.discipline : 5,
+    session:       _sess,
+    sessions:      _sess,
+    emotion:       r.emotion       != null ? parseFloat(r.emotion) : 5,
+    emo:           r.emotion       != null ? parseFloat(r.emotion) : 5,
+    discipline:    r.discipline    != null ? parseFloat(r.discipline) : 5,
+    disc:          r.discipline    != null ? parseFloat(r.discipline) : 5,
     fiboLevel:     r.fibo_level    || '',
     note:          r.note          || '',
     imgLink:       r.img_link      || '',
@@ -6027,6 +6040,7 @@ function renderSessRow(rowId, isOrder){
 function renderAllSessRows(){
   renderSessRow('sessionTagRow',false);
   renderSessRow('oSessionTagRow',true);
+  renderSessRow('dtSessionTagRow',true); // Data Mode + Edit Trade modal
 }
 
 function toggleSessEdit(){
@@ -6160,6 +6174,25 @@ function confirmAddSession(){
 }
 
 function toggleSessionTag(el,sess){el.classList.toggle('active');}
+
+var _dtSessEditMode=false;
+function toggleDtSessEdit(){
+  _dtSessEditMode=!_dtSessEditMode;
+  var btn=document.getElementById('dtSessEditBtn');
+  if(btn) btn.style.borderColor=_dtSessEditMode?'var(--accent)':'var(--border)';
+  // re-render with edit mode flag
+  var row=document.getElementById('dtSessionTagRow');if(!row)return;
+  var activeIds=getActiveSessIds('dtSessionTagRow');
+  renderSessRow('dtSessionTagRow',true);
+  // restore active state (renderSessRow resets it)
+  row.querySelectorAll('.sess-wrap .tag').forEach(function(el){
+    if(activeIds.indexOf(el.dataset.sid)>=0) el.classList.add('active');
+  });
+  // show/hide edit buttons based on mode
+  row.querySelectorAll('.tag-del, [title="แก้ไข"], .sess-drag-handle').forEach(function(el){
+    el.style.display=_dtSessEditMode?'inline-block':'none';
+  });
+}
 
 function initSessionTagColors(){
   renderAllSessRows();
@@ -7955,9 +7988,10 @@ function dtOpenAdd(){
   var edt=document.getElementById('dtEntryDate');if(edt)edt.value=dt;
   var cdt=document.getElementById('dtCloseDate');if(cdt)cdt.value='';
   dtSetSide('Long');
-  // Init dt session tag row
+  // Init dt session tag row (ใช้ระบบเดียวกับ Journal)
   DT.sessions=[];
-  dtRenderDtSessionTags();
+  renderSessRow('dtSessionTagRow',true);
+  document.querySelectorAll('#dtSessionTagRow .tag').forEach(function(el){el.classList.remove('active');});
   var emo=document.getElementById('dtEmoSlider');if(emo)emo.value=5;dtUpdateEmo(5);
   var disc=document.getElementById('dtDiscSlider');if(disc)disc.value=5;dtUpdateDisc(5);
   dtAutoSession();
@@ -8039,10 +8073,16 @@ function dtOpenEdit(visIdx){
   DT.emo=t.emo||5;DT.disc=t.disc||5;
   var emo=document.getElementById('dtEmoSlider');if(emo)emo.value=DT.emo;dtUpdateEmo(DT.emo);
   var disc=document.getElementById('dtDiscSlider');if(disc)disc.value=DT.disc;dtUpdateDisc(DT.disc);
-  DT.sessions=t.session?[t.session]:[];
-  var sel=document.getElementById('dtSession');
-  if(sel&&t.session){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===t.session){sel.selectedIndex=i;break;}}}
-  else if(sel) sel.selectedIndex=0;
+  DT.sessions=t.session?(t.session.split(',').map(function(s){return s.trim();})):[];
+  // render + restore session tags
+  renderSessRow('dtSessionTagRow',true);
+  var _sesNames=DT.sessions.map(function(s){return s.toLowerCase();});
+  document.querySelectorAll('#dtSessionTagRow .sess-wrap .tag').forEach(function(el){
+    var sid=el.dataset.sid;
+    var s=_customSessions.find(function(x){return x.id===sid;});
+    var lbl=s?s.label.toLowerCase():'';
+    el.classList.toggle('active', _sesNames.indexOf(lbl)>=0||_sesNames.indexOf(sid)>=0);
+  });
   dtCalcAll();
   openM('mDataTrade');
 }
@@ -8066,7 +8106,7 @@ function dtSaveTrade(){
   var assetVal=(document.getElementById('dtAssetSel')||{}).value||gs('dtAsset')||'';
   var t={
     _id:DT.editIdx>=0&&DT.trades[DT.editIdx]?DT.trades[DT.editIdx]._id:_uuid(),
-    date:dateOnly,session:sessionVal,
+    date:dateOnly,day:dayName,session:sessionVal,
     asset:assetVal,side:DT.side,
     entryTime:timeOnly,duration:'',setupDuration:gv('dtSetupDur'),
     timeInPos:gv('dtTimePos'),
@@ -10214,8 +10254,13 @@ if(document.readyState==='loading'){
       <!-- Session + Entry Date/Time -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;align-items:start;">
         <div>
-          <div class="field-label" style="display:flex;justify-content:space-between;align-items:center;">Session <span style="font-size:9px;color:var(--accent);cursor:pointer;" onclick="addDtSessionTag()">+ Add</span></div>
-          <div id="dtSessionTagRow" style="display:flex;flex-wrap:nowrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;overflow-x:auto;"></div>
+          <div class="field-label" style="display:flex;justify-content:space-between;align-items:center;">Session
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button id="dtSessEditBtn" onclick="toggleDtSessEdit()" style="background:var(--bg-input);border:1px solid var(--border);color:var(--text-muted);padding:1px 5px;border-radius:4px;font-size:9px;cursor:pointer;">Edit</button>
+              <span style="font-size:9px;color:var(--accent);cursor:pointer;" onclick="addSessionTag()">+ Add</span>
+            </div>
+          </div>
+          <div id="dtSessionTagRow" style="display:flex;flex-wrap:wrap;gap:3px;min-height:28px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;"></div>
         </div>
         <div class="form-field">
           <label>Time in Position <span style="font-size:9px;color:var(--amber)">(auto)</span></label>
