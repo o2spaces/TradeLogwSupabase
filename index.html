@@ -6062,7 +6062,7 @@ function openSessEdit(sid){
   var existing=document.getElementById('_sessEditModal');if(existing)existing.remove();
   var modal=document.createElement('div');
   modal.id='_sessEditModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
 
   var box=document.createElement('div');
   box.style.cssText='background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,.7);';
@@ -6124,7 +6124,7 @@ function addSessionTag(){
   var existing=document.getElementById('_addSessModal');if(existing)existing.remove();
   var modal=document.createElement('div');
   modal.id='_addSessModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
   var box=document.createElement('div');
   box.style.cssText='background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,.7);';
   // Title
