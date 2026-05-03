@@ -5536,7 +5536,8 @@ async function _sbDispatch(action, d){
     await _supabase.from('data_trades').upsert(drow, { onConflict:'user_id,id' });
   }
   else if(action === 'deleteDataTrade'){
-    await _supabase.from('data_trades').delete().eq('user_id', uid).eq('id', String(d.id));
+    var delId = String(d._id || d.id || ''); if(!delId){ console.warn('[deleteDataTrade] no id'); }
+    else await _supabase.from('data_trades').delete().eq('user_id', uid).eq('id', delId);
   }
   else if(action === 'clearAllDataTrades'){
     await _supabase.from('data_trades').delete().eq('user_id', uid).eq('portfolio', port);
@@ -7585,9 +7586,11 @@ async function dtLoad(){
       if(uid){
         var port=S.currentPortfolio||'default';
         var dtRes=await _supabase.from('data_trades').select('*').eq('user_id',uid).eq('portfolio',port).order('entry_date',{ascending:false});
-        if(!dtRes.error && dtRes.data && dtRes.data.length){
+        if(!dtRes.error && dtRes.data){
           DT.trades=dtRes.data.map(function(r){ return _tradeFromRow(r); });
-          return;
+          if(DT.trades.length) return;
+        } else if(dtRes.error){
+          console.warn('[dtLoad]', dtRes.error.message);
         }
       }
     }catch(e){console.warn('[dtLoad supabase]',e.message);}
@@ -8871,12 +8874,12 @@ function dtDeleteRow(visIdx){
   // ── FIX: capture _id ก่อน dtLoad เพื่อป้องกัน index shift ──
   var targetId=t._id;
   showConfirm('ลบ Trade '+(t.asset||'')+(t.entry?' @ '+t.entry:'')+'?', function(){
-    dtLoad();
+    // ลบจาก memory ก่อนเสมอ
     var realIdx=DT.trades.findIndex(function(x){return x._id===targetId;});
     if(realIdx>=0) DT.trades.splice(realIdx,1);
-    dtSave();dtRender();showToast('ลบแล้ว','success');
-    if(_supabase && t._id){
-      sendSheet('deleteDataTrade',{_id:t._id}); // no-cors FIX: ใช้ sendSheet
+    dtSave(); dtRender(); showToast('ลบแล้ว','success');
+    if(_supabase && targetId){
+      sendSheet('deleteDataTrade',{_id:targetId, id:targetId});
     }
   });
 }
