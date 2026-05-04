@@ -603,10 +603,8 @@ var _supabase = null;
     </div>
     <div class="auth-field">
       <div class="auth-label">Password</div>
-<div style="position:relative;">
-      <input class="auth-input" id="authPass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password" style="padding-right:44px;"
+      <input class="auth-input" id="authPass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password"
         onkeydown="if(event.key==='Enter')authDoLogin()">
-      <span onclick="togglePw('authPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;opacity:.55;user-select:none;" title="แสดง/ซ่อน">👁</span>
     </div>
     <button class="auth-btn" id="authBtn" onclick="authDoLogin()">🔐 เข้าสู่ระบบ</button>
   </div>
@@ -1810,15 +1808,6 @@ function authGoogleSignIn(){
 }
 
 // ── Username/Password Login ────────────────────────────────────
-function togglePw(inputId, eyeEl){
-  var el = document.getElementById(inputId);
-  if(!el) return;
-  var show = el.type === 'password';
-  el.type = show ? 'text' : 'password';
-  eyeEl.style.opacity = show ? '1' : '.55';
-  eyeEl.title = show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน';
-}
-
 async function authDoLogin(){
   var user = (document.getElementById('authUser').value || '').trim().toLowerCase();
   var pass = document.getElementById('authPass').value || '';
@@ -2011,18 +2000,14 @@ async function adminAddUser(){
   var btn     = document.getElementById('regBtn');
   errEl.style.display = 'none';
 
-  var regEmailEl = document.getElementById('regEmail');
-  var regEmailVal = regEmailEl ? regEmailEl.value.trim() : '';
   if(!uname || !pass){ errEl.textContent='❌ กรอก Username และ Password ก่อน'; errEl.style.display='block'; return; }
-  if(!regEmailVal || regEmailVal.indexOf('@') < 0){ errEl.textContent='❌ กรอก Email ให้ถูกต้อง'; errEl.style.display='block'; return; }
   if(pass.length < 6){ errEl.textContent='❌ Password ต้องมีอย่างน้อย 6 ตัวอักษร'; errEl.style.display='block'; return; }
   if(!_supabase){ errEl.textContent='❌ ไม่ได้ตั้งค่า Supabase'; errEl.style.display='block'; return; }
 
   btn.disabled=true; btn.textContent='⏳ กำลังสร้าง...';
   try{
     // สร้าง email จาก username — ใช้ domain ที่ Supabase ยอมรับ
-    var emailVal = (document.getElementById('regEmail') ? document.getElementById('regEmail').value.trim() : '');
-    var email = emailVal && emailVal.indexOf('@') >= 0 ? emailVal : (uname.indexOf('@') >= 0 ? uname : uname + '@tradelog.app');
+    var email = uname.indexOf('@') >= 0 ? uname : uname + '@tradelog.app';
 
     // ⚠️ บันทึก admin session ก่อน เพราะ signUp จะ auto-login เป็น user ใหม่ทันที
     var adminSessionSnap = (await _supabase.auth.getSession()).data.session;
@@ -2079,7 +2064,7 @@ async function adminAddUser(){
 
     var confirmed = signRes.data.user.confirmed_at || signRes.data.user.email_confirmed_at;
     showToast('✅ เพิ่ม User "'+uname+'" สำเร็จ'+(confirmed?'':' — ต้อง Confirm Email ก่อน Login ได้'),'success');
-    ['regUser','regPass','regDisplay','regEmail'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['regUser','regPass','regDisplay'].forEach(function(id){ document.getElementById(id).value=''; });
     adminLoadUsers();
   }catch(e){
     errEl.textContent='❌ เกิดข้อผิดพลาด: '+e.message;
@@ -2789,20 +2774,12 @@ function getFundValue(selId,customId){
   }
   return sel.value;
 }
-async function confirmAddPortfolio(btn){
+function confirmAddPortfolio(btn){
   var name=(document.getElementById('newPortName').value||'').trim();
   if(!name){showToast('กรุณาใส่ชื่อพอร์ต','error');return;}
   var bal=parseFloat(document.getElementById('newPortBal').value)||0;
   var fund=getFundValue('newPortFundSel','newPortFundCustom');
   var id='port_'+Date.now();
-  btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...';
-  // ─── บันทึกลง Supabase ───────────────────────────────────────
-  if(_supabase && _authSession && _authSession._sbUserId){
-    var uid = _authSession._sbUserId;
-    var row = { id:id, user_id:uid, name:name, balance:bal, fund:fund||'', is_deleted:false };
-    var res = await _supabase.from('portfolios').insert(row);
-    if(res.error){ showToast('❌ บันทึกพอร์ตไม่สำเร็จ: '+res.error.message,'error'); btn.disabled=false; btn.textContent='✓ เพิ่มพอร์ต'; return; }
-  }
   S.portfolios[id]={name:name,balance:bal,fund:fund};
   lsSet('port_'+id+'_s','{}');
   lsSet('port_'+id+'_t','{}');
@@ -2810,6 +2787,7 @@ async function confirmAddPortfolio(btn){
   renderPortfolioBar();
   lsSet('tj_ports',JSON.stringify(S.portfolios));
   showToast('✅ เพิ่มพอร์ต "'+name+'" แล้ว','success');
+  if(_supabase) sendSheet('saveSettings',{key:'portfolio_add',value:'id='+id+' name='+name+' fund='+(fund||'-')});
 }
 function editPortfolio(id){
   var p=S.portfolios[id];if(!p) return;
@@ -2830,26 +2808,21 @@ function editPortfolio(id){
   document.body.appendChild(modal);
   modal.addEventListener('mousedown',function(e){modal._mdOnBack=(e.target===modal);});modal.addEventListener('mouseup',function(e){if(e.target===modal&&modal._mdOnBack)modal.remove();modal._mdOnBack=false;});
 }
-async function confirmEditPortfolio(id,btn){
+function confirmEditPortfolio(id,btn){
   var name=(document.getElementById('editPortName').value||'').trim();
   if(!name){showToast('กรุณาใส่ชื่อพอร์ต','error');return;}
-  var bal=parseFloat(document.getElementById('editPortBal').value)||0;
-  var fund=getFundValue('editPortFundSel','editPortFundCustom');
-  btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...';
-  // ─── บันทึกลง Supabase ───────────────────────────────────────
-  if(_supabase && _authSession && _authSession._sbUserId){
-    var res = await _supabase.from('portfolios')
-      .update({ name:name, balance:bal, fund:fund||'' })
-      .eq('id',id).eq('user_id',_authSession._sbUserId);
-    if(res.error){ showToast('❌ บันทึกไม่สำเร็จ: '+res.error.message,'error'); btn.disabled=false; btn.textContent='💾 บันทึก'; return; }
-  }
   S.portfolios[id].name=name;
-  S.portfolios[id].balance=bal;
-  S.portfolios[id].fund=fund;
+  S.portfolios[id].balance=parseFloat(document.getElementById('editPortBal').value)||0;
+  S.portfolios[id].fund=getFundValue('editPortFundSel','editPortFundCustom');
   btn.closest('div[style*=fixed]').remove();
   renderPortfolioBar();
   lsSet('tj_ports',JSON.stringify(S.portfolios));
-  showToast('✅ อัปเดตพอร์ตแล้ว','success');
+  var saveMsg='✅ อัปเดตพอร์ตแล้ว';
+  if(_supabase){
+    sendSheet('saveSettings',{key:'portfolio_edit',value:'id='+id+' name='+name+' balance='+(S.portfolios[id].balance||0)+' fund='+(S.portfolios[id].fund||'-')}); // BUG1-FIX: fund: → fund=
+    saveMsg='✅ อัปเดต + บันทึกลง Sheet แล้ว';
+  }
+  showToast(saveMsg,'success');
 }
 function deletePortfolio(id,btn){
   if(!confirm('ลบพอร์ตนี้? ข้อมูลออเดอร์ในพอร์ตนี้จะหายไปด้วย')) return;
@@ -2883,11 +2856,8 @@ function deletePortfolio(id,btn){
   }
   renderPortfolioBar();
   lsSet('tj_ports',JSON.stringify(S.portfolios));
-  if(_supabase && _authSession && _authSession._sbUserId){
-    _supabase.from('portfolios')
-      .update({ is_deleted:true })
-      .eq('id',id).eq('user_id',_authSession._sbUserId)
-      .then(function(r){ if(r.error) console.warn('deletePortfolio supabase:', r.error.message); });
+  if(_supabase){
+    sendSheet('deletePortfolio',{portfolio:id});
   }
   showToast('🗑 ลบพอร์ตแล้ว','success');
 }
@@ -11070,14 +11040,8 @@ document.addEventListener('mouseup', function(){
         <div id="regErr" style="background:rgba(255,77,106,.08);border:1px solid rgba(255,77,106,.3);border-radius:6px;padding:7px 10px;font-size:11px;color:var(--red);margin-bottom:10px;display:none;"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
           <div><div class="auth-label">Username *</div><input class="settings-input" id="regUser" placeholder="username (ตัวพิมพ์เล็ก)"></div>
-          <div><div class="auth-label">Email *</div><input class="settings-input" id="regEmail" type="email" placeholder="user@example.com"></div>
-          <div><div class="auth-label">Password *</div>
-            <div style="position:relative;">
-              <input class="settings-input" id="regPass" type="password" placeholder="รหัสผ่าน" style="width:100%;padding-right:36px;box-sizing:border-box;">
-              <span onclick="togglePw('regPass',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:15px;opacity:.6;" title="แสดง/ซ่อนรหัสผ่าน">👁</span>
-            </div>
-          </div>
           <div><div class="auth-label">Display Name</div><input class="settings-input" id="regDisplay" placeholder="ชื่อแสดงผล"></div>
+          <div><div class="auth-label">Password *</div><input class="settings-input" id="regPass" type="password" placeholder="รหัสผ่าน"></div>
           <div><div class="auth-label">Role</div>
             <select class="settings-input" id="regRole">
               <option value="user">👤 User</option>
@@ -11153,19 +11117,16 @@ document.addEventListener('mouseup', function(){
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
         <div>
           <div class="auth-label" style="margin-bottom:5px;">รหัสผ่านเดิม</div>
-          <div style="position:relative;"><input id="chPassOld" class="settings-input" type="password" placeholder="ใส่รหัสผ่านเดิม" style="width:100%;padding-right:36px;box-sizing:border-box;">
-          <span onclick="togglePw('chPassOld',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:15px;opacity:.6;" title="แสดง/ซ่อน">👁</span></div>
+          <input id="chPassOld" class="settings-input" type="password" placeholder="ใส่รหัสผ่านเดิม" style="width:100%;">
         </div>
         <div>
           <div class="auth-label" style="margin-bottom:5px;">รหัสผ่านใหม่</div>
-          <div style="position:relative;"><input id="chPassNew" class="settings-input" type="password" placeholder="ใส่รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)" style="width:100%;padding-right:36px;box-sizing:border-box;">
-          <span onclick="togglePw('chPassNew',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:15px;opacity:.6;" title="แสดง/ซ่อน">👁</span></div>
+          <input id="chPassNew" class="settings-input" type="password" placeholder="ใส่รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)" style="width:100%;">
         </div>
         <div>
           <div class="auth-label" style="margin-bottom:5px;">ยืนยันรหัสผ่านใหม่</div>
-          <div style="position:relative;"><input id="chPassConfirm" class="settings-input" type="password" placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง" style="width:100%;padding-right:36px;box-sizing:border-box;"
+          <input id="chPassConfirm" class="settings-input" type="password" placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง" style="width:100%;"
             onkeydown="if(event.key==='Enter') doChangePassword()">
-          <span onclick="togglePw('chPassConfirm',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:15px;opacity:.6;" title="แสดง/ซ่อน">👁</span></div>
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
