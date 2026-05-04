@@ -1834,12 +1834,16 @@ async function authDoLogin(){
       // user พิมพ์ email โดยตรง
       emailInput = user;
     } else {
-      // user พิมพ์ username — ค้นหา email จาก profiles table ก่อน
-      var profLookup = await _supabase.from('profiles').select('email').eq('username', user).maybeSingle();
-      if(profLookup.data && profLookup.data.email){
-        emailInput = profLookup.data.email;
-      } else {
-        // fallback: ใช้ domain @tradelog.app (user สร้างผ่าน Admin panel)
+      // user พิมพ์ username — ใช้ RPC function เพื่อ bypass RLS แล้วค้นหา email
+      try{
+        var rpcRes = await _supabase.rpc('get_email_by_username', { p_username: user });
+        if(rpcRes.data){
+          emailInput = rpcRes.data;
+        } else {
+          // fallback: ใช้ domain @tradelog.app (user สร้างผ่าน Admin panel)
+          emailInput = user + '@tradelog.app';
+        }
+      }catch(ex){
         emailInput = user + '@tradelog.app';
       }
     }
