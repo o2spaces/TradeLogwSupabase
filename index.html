@@ -2089,8 +2089,9 @@ function _sessionFromRow(s){
 }
 function _tradeFromRow(r){
   // compute day + entryTime from entry_date if not stored
+  var _DAYS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var _edate = r.entry_date || r.date || '';
-  var _day   = r.day || (_edate ? (DT_DAYS||['Sun','Mon','Tue','Wed','Thu','Fri','Sat'])[new Date(_edate.substring(0,10)+'T12:00').getDay()]||'' : '');
+  var _day   = r.day || (_edate ? _DAYS[new Date(_edate.substring(0,10)+'T12:00').getDay()]||'' : '');
   var _etime = r.entryTime || (_edate && _edate.length>=16 ? _edate.substring(11,16) : '');
   var _sess  = r.sessions || r.session || '';
   return {
@@ -2363,10 +2364,44 @@ async function syncFromSheet(onDone){
     var settingsRes = await _supabase.from('settings').select('*').eq('user_id', uid);
     if(!settingsRes.error && settingsRes.data){
       settingsRes.data.forEach(function(row){
-        // restore dropdown options
+        var v = row.value || '';
+        // dropdown options
         if(row.key.startsWith('dropdown_')){
           var selId = row.key.replace('dropdown_','');
-          try{ lsSet('tj_drop_'+selId, JSON.stringify(row.value.split(',').filter(Boolean))); }catch(e){}
+          try{ lsSet('tj_drop_'+selId, JSON.stringify(v.split(',').filter(Boolean))); }catch(e){}
+        }
+        // custom sessions
+        if(row.key === 'custom_sessions'){
+          try{
+            var cs = JSON.parse(v);
+            if(Array.isArray(cs) && cs.length){
+              lsSet('tj_custom_sess', v);
+              _customSessions = cs;
+              if(typeof renderAllSessRows === 'function') setTimeout(renderAllSessRows, 100);
+            }
+          }catch(e){}
+        }
+        // strat list
+        if(row.key === 'strat_list'){
+          try{
+            var sl = JSON.parse(v);
+            if(Array.isArray(sl) && sl.length){
+              lsSet('tj_strat_list', v);
+              if(typeof initStratRow === 'function') setTimeout(initStratRow, 100);
+            }
+          }catch(e){}
+        }
+        // fund list
+        if(row.key === 'fund_list'){
+          try{
+            var fl = JSON.parse(v); if(Array.isArray(fl) && fl.length) lsSet('tj_fund_list', v);
+          }catch(e){}
+        }
+        // fund log
+        if(row.key === 'fund_log'){
+          try{
+            var flog = JSON.parse(v); if(Array.isArray(flog)) lsSet('tj_fund_log', v);
+          }catch(e){}
         }
       });
     }
@@ -2663,7 +2698,10 @@ function getFundList(){
   var list=saved?JSON.parse(saved):['Topstep','Lucid','Apex'];
   return list;
 }
-function saveFundList(list){lsSet('tj_fund_list',JSON.stringify(list));}
+function saveFundList(list){
+  lsSet('tj_fund_list',JSON.stringify(list));
+  if(_supabase) sendSheet('saveSettings',{key:'fund_list',value:JSON.stringify(list)});
+}
 function buildFundOptions(selected){
   var list=getFundList();
   var opts=list.map(function(f){return '<option value="'+escHtml(f)+'"'+(f===selected?' selected':'')+'>'+escHtml(f)+'</option>';}).join('');
@@ -2960,6 +2998,7 @@ function pushFundLog(action, fundName){
   log.unshift({ts:new Date().toISOString(), action:action, fund:fundName});
   if(log.length>200) log=log.slice(0,200);
   lsSet('tj_fund_log', JSON.stringify(log));
+  if(_supabase) sendSheet('saveSettings',{key:'fund_log',value:JSON.stringify(log)});
   if(_supabase) sendSheet('saveSettings',{key:'fund_'+action, value:'fund='+fundName+' ts='+new Date().toISOString()});
 }
 
@@ -5532,8 +5571,10 @@ async function _sbDispatch(action, d){
   }
   else if(action === 'saveSettings'){
     if(d.key){
+      var _val = typeof d.value === 'string' ? d.value
+               : (d.value !== null && d.value !== undefined) ? JSON.stringify(d.value) : '';
       await _supabase.from('settings').upsert(
-        { user_id:uid, key:d.key, value:String(d.value||''), updated_at:new Date().toISOString() },
+        { user_id:uid, key:d.key, value:_val, updated_at:new Date().toISOString() },
         { onConflict:'user_id,key' }
       );
     }
@@ -5913,7 +5954,7 @@ function loadCustomSessions(){
 }
 function saveCustomSessions(){
   lsSet('tj_custom_sess',JSON.stringify(_customSessions));
-  if(_supabase) sendSheet('saveSettings',{key:'custom_sessions',value:_customSessions.map(function(s){return s.label+(s.time?' ('+s.time+')':'');}).join(', ')});
+  if(_supabase) sendSheet('saveSettings',{key:'custom_sessions',value:JSON.stringify(_customSessions)});
 }
 var _customSessions=loadCustomSessions()||DEFAULT_SESSIONS.map(function(s){return Object.assign({},s);});
 var _sessEditMode=false;
@@ -6259,6 +6300,7 @@ function saveStratList(){
   var names=[];
   row.querySelectorAll('.strat-wrap .tag').forEach(function(el){names.push(el.textContent.trim());});
   lsSet('tj_strat_list',JSON.stringify(names));
+  if(_supabase) sendSheet('saveSettings',{key:'strat_list',value:JSON.stringify(names)});
 }
 function loadStratList(){
   try{return JSON.parse(lsGet('tj_strat_list')||'null');}catch(e){return null;}
