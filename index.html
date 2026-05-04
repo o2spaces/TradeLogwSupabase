@@ -2005,12 +2005,21 @@ async function adminAddUser(){
     // สร้าง email จาก username — ใช้ domain ที่ Supabase ยอมรับ
     var email = uname.indexOf('@') >= 0 ? uname : uname + '@tradelog.app';
 
+    // ⚠️ บันทึก admin session ก่อน เพราะ signUp จะ auto-login เป็น user ใหม่ทันที
+    var adminSessionSnap = (await _supabase.auth.getSession()).data.session;
+
     // ลอง signUp — ถ้า Supabase ตั้งค่า "Confirm email" = OFF จะสำเร็จทันที
     var signRes = await _supabase.auth.signUp({
       email: email,
       password: pass,
       options: { data: { username: uname, display_name: display||uname } }
     });
+
+    // ✅ Restore admin session ทันที (ก่อน signUp จะ hijack session)
+    if(adminSessionSnap && adminSessionSnap.access_token){
+      try{ await _supabase.auth.setSession({ access_token: adminSessionSnap.access_token, refresh_token: adminSessionSnap.refresh_token }); }
+      catch(e){ console.warn('[adminAddUser] restore session:', e.message); }
+    }
 
     if(signRes.error){
       // แสดงข้อความ error ที่เข้าใจง่าย
