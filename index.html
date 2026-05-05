@@ -1994,7 +1994,16 @@ function adminLoadUsers(){
 
   _supabase.from('profiles').select('*').order('created_at')
     .then(function(res){
-      if(res.error){ tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--red);">❌ ' + res.error.message + '</td></tr>'; return; }
+      if(res.error || !res.data || res.data.length===0){
+        var errMsg = res.error ? res.error.message : 'ไม่พบข้อมูล — อาจเกิดจาก RLS policy';
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;">' 
+          +'<div style="color:var(--red);margin-bottom:8px;">❌ ' + errMsg + '</div>'
+          +'<div style="font-size:11px;color:var(--text-muted);">💡 รัน SQL นี้ใน Supabase:<br>'
+          +'<code style="background:var(--bg-input);padding:4px 8px;border-radius:4px;font-size:10px;">'
+          +'create policy "admin view all" on public.profiles for select using (exists (select 1 from public.profiles where id = auth.uid() and role = \'admin\'));'
+          +'</code></div></td></tr>';
+        return;
+      }
       var users = res.data || [];
       var today = new Date().toDateString();
       var todayCount = users.filter(function(u){ return u.last_login && new Date(u.last_login).toDateString()===today; }).length;
