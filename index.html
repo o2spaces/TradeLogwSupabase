@@ -862,6 +862,18 @@ var _supabase = null;
               <option value="00:00-02:59">00:00 - 02:59</option>
               <option value="03:00-05:59">03:00 - 05:59</option>
             </select></div>
+          <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">&#x1F534; Close Time</div>
+            <select id="dtfCloseTime" onchange="dtSaveFilterState();dtRender()" style="width:100%;background:var(--bg-input);border:1px solid var(--blue,#3b82f6);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
+              <option value="">All</option>
+              <option value="06:00-08:59">06:00 - 08:59</option>
+              <option value="09:00-11:59">09:00 - 11:59</option>
+              <option value="12:00-14:59">12:00 - 14:59</option>
+              <option value="15:00-17:59">15:00 - 17:59</option>
+              <option value="18:00-20:59">18:00 - 20:59</option>
+              <option value="21:00-23:59">21:00 - 23:59</option>
+              <option value="00:00-02:59">00:00 - 02:59</option>
+              <option value="03:00-05:59">03:00 - 05:59</option>
+            </select></div>
         </div>
       </div>
     </div>
@@ -5130,7 +5142,11 @@ function updateBadge(){
 }
 async function callWithProv(prov,type,sys,user,b64){
   var k=getKeyForProv(prov);
-  if(!k&&prov!=='ollama') throw new Error('No key for '+prov);
+  if(!k&&prov!=='ollama'){
+    showToast('❌ ไม่พบ API Key สำหรับ '+prov+' — กรุณาตั้งค่าใน ⚙️ API','error');
+    setTimeout(function(){ openAPI(); }, 800);
+    throw new Error('No API key for '+prov+'. Please set it in API Settings.');
+  }
   if(type==='vision'){
     if(prov==='openai'){var r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:S.keys['mOAI']||'gpt-4o',max_tokens:600,messages:[{role:'user',content:[{type:'text',text:sys},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}}]}]})});var d=await r.json();if(d.error)throw new Error(d.error.message);return d.choices[0].message.content;}
     if(prov==='gemini'){var mo=S.keys['mGem']||'gemini-2.5-flash-preview-05-20';var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+mo+':generateContent?key='+k,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sys},{inline_data:{mime_type:'image/jpeg',data:b64}}]}]})});var d=await r.json();if(d.error)throw new Error(d.error.message);return d.candidates[0].content.parts[0].text;}
@@ -7955,13 +7971,13 @@ function _dsRenderRows(body){
     upBtn.textContent = '▲';
     upBtn.title = 'เลื่อนขึ้น';
     upBtn.disabled = idx === 0;
-    upBtn.style.cssText = 'background:none;border:none;color:'+(idx===0?'var(--border)':'var(--text-muted)')+';font-size:10px;cursor:'+(idx===0?'default':'pointer')+';line-height:1;padding:1px 3px;';
+    upBtn.style.cssText = 'background:none;border:none;color:'+(idx===0?'var(--border)':'var(--text-muted)')+';font-size:11px;cursor:'+(idx===0?'default':'pointer')+';line-height:1;padding:0 2px;opacity:'+(idx===0?'.3':'1')+';';
     upBtn.onclick = (function(i){ return function(){ dsMoveRow(i, -1); }; })(idx);
     var dnBtn = document.createElement('button');
     dnBtn.textContent = '▼';
     dnBtn.title = 'เลื่อนลง';
     dnBtn.disabled = idx === DS.list.length - 1;
-    dnBtn.style.cssText = 'background:none;border:none;color:'+(idx===DS.list.length-1?'var(--border)':'var(--text-muted)')+';font-size:10px;cursor:'+(idx===DS.list.length-1?'default':'pointer')+';line-height:1;padding:1px 3px;';
+    dnBtn.style.cssText = 'background:none;border:none;color:'+(idx===DS.list.length-1?'var(--border)':'var(--text-muted)')+';font-size:11px;cursor:'+(idx===DS.list.length-1?'default':'pointer')+';line-height:1;padding:0 2px;opacity:'+(idx===DS.list.length-1?'.3':'1')+';';
     dnBtn.onclick = (function(i){ return function(){ dsMoveRow(i, 1); }; })(idx);
     orderWrap.appendChild(upBtn);
     orderWrap.appendChild(dnBtn);
@@ -8053,29 +8069,103 @@ async function dsMoveRow(idx, dir){
 function dsOpenEdit(id){
   var d = DS.list.find(function(x){ return x.id===id; });
   if(!d) return;
-  var name = prompt('ชื่อใหม่:', d.name);
-  if(!name || !name.trim()) return;
-  name = name.trim();
-  d.name = name;
-  if(_supabase) _supabase.from('datasets').update({name:name}).eq('id',id);
-  dsRenderSelector();
-  _dsRenderRows(document.getElementById('dsManageBody'));
-  showToast('✅ เปลี่ยนชื่อแล้ว','success');
+  var old2 = document.getElementById('dsEditInlineModal');
+  if(old2) old2.remove();
+  var backdrop = document.createElement('div');
+  backdrop.id = 'dsEditInlineModal';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:10100;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  var ttl = document.createElement('div');
+  ttl.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:12px;';
+  ttl.textContent = '✏️ แก้ชื่อ Dataset';
+  var inp = document.createElement('input');
+  inp.className = 'settings-input';
+  inp.value = d.name;
+  inp.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:12px;';
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-sm';
+  cancelBtn.textContent = 'ยกเลิก';
+  cancelBtn.onclick = function(){ backdrop.remove(); };
+  var saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-primary';
+  saveBtn.style.cssText = 'font-size:12px;padding:5px 16px;';
+  saveBtn.textContent = '✓ บันทึก';
+  saveBtn.onclick = function(){
+    var name = inp.value.trim();
+    if(!name) return;
+    d.name = name;
+    if(_supabase) _supabase.from('datasets').update({name:name}).eq('id',id);
+    dsRenderSelector();
+    _dsRenderRows(document.getElementById('dsManageBody'));
+    backdrop.remove();
+    showToast('✅ เปลี่ยนชื่อแล้ว','success');
+  };
+  inp.onkeydown = function(e){ if(e.key==='Enter') saveBtn.onclick(); if(e.key==='Escape') backdrop.remove(); };
+  btns.appendChild(cancelBtn); btns.appendChild(saveBtn);
+  box.appendChild(ttl); box.appendChild(inp); box.appendChild(btns);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  setTimeout(function(){ inp.focus(); inp.select(); }, 60);
 }
 
 function dsAddTag(id){
   var d = DS.list.find(function(x){ return x.id===id; });
   if(!d) return;
-  var presets = Object.keys(DS_TAG_COLORS).join(', ');
-  var tag = prompt('เพิ่ม Tag (preset: '+presets+'):\nหรือพิมพ์ชื่อใหม่เองก็ได้');
-  if(!tag || !tag.trim()) return;
-  tag = tag.trim();
-  var existing = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
-  if(existing.indexOf(tag) >= 0){ showToast('Tag นี้มีอยู่แล้ว','error'); return; }
-  existing.push(tag);
-  d.tags = existing.join(',');
-  if(_supabase) _supabase.from('datasets').update({tags:d.tags}).eq('id',id);
-  _dsRenderRows(document.getElementById('dsManageBody'));
+  var old2 = document.getElementById('dsTagModal');
+  if(old2) old2.remove();
+  var backdrop = document.createElement('div');
+  backdrop.id = 'dsTagModal';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:10100;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:360px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  var ttl = document.createElement('div');
+  ttl.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:10px;';
+  ttl.textContent = '🏷️ เพิ่ม Tag';
+  // Preset chips
+  var presetRow = document.createElement('div');
+  presetRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;';
+  Object.keys(DS_TAG_COLORS).forEach(function(t){
+    var color = DS_TAG_COLORS[t];
+    var chip = document.createElement('button');
+    chip.textContent = t;
+    chip.style.cssText = 'background:'+color+'22;border:1px solid '+color+';color:'+color+';border-radius:20px;font-size:11px;padding:3px 10px;cursor:pointer;';
+    chip.onclick = function(){ inp.value = t; inp.focus(); };
+    presetRow.appendChild(chip);
+  });
+  var inp = document.createElement('input');
+  inp.className = 'settings-input';
+  inp.placeholder = 'พิมพ์ชื่อ tag เอง หรือเลือก preset ด้านบน';
+  inp.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:12px;';
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-sm';
+  cancelBtn.textContent = 'ยกเลิก';
+  cancelBtn.onclick = function(){ backdrop.remove(); };
+  var addBtn = document.createElement('button');
+  addBtn.className = 'btn-primary';
+  addBtn.style.cssText = 'font-size:12px;padding:5px 16px;';
+  addBtn.textContent = '＋ เพิ่ม Tag';
+  addBtn.onclick = function(){
+    var tag = inp.value.trim();
+    if(!tag){ inp.focus(); return; }
+    var existing = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+    if(existing.indexOf(tag)>=0){ showToast('Tag นี้มีอยู่แล้ว','error'); return; }
+    existing.push(tag);
+    d.tags = existing.join(',');
+    if(_supabase) _supabase.from('datasets').update({tags:d.tags}).eq('id',id);
+    _dsRenderRows(document.getElementById('dsManageBody'));
+    backdrop.remove();
+  };
+  inp.onkeydown = function(e){ if(e.key==='Enter') addBtn.onclick(); if(e.key==='Escape') backdrop.remove(); };
+  btns.appendChild(cancelBtn); btns.appendChild(addBtn);
+  box.appendChild(ttl); box.appendChild(presetRow); box.appendChild(inp); box.appendChild(btns);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  setTimeout(function(){ inp.focus(); }, 60);
 }
 
 function dsRemoveTag(id, tag){
@@ -8711,7 +8801,7 @@ function dtToggleFilter(){
 function dtUpdateFilterBadge(){
   var badge=document.getElementById('dtFilterActiveBadge');if(!badge)return;
   var count=0;
-  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfEntryTime'].forEach(function(id){
+  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfEntryTime','dtfCloseTime'].forEach(function(id){
     var el=document.getElementById(id);if(el&&el.value)count++;
   });
   var dur=document.getElementById('dtfDur');if(dur&&dur.value)count++;
@@ -9065,6 +9155,7 @@ function dtFiltered(){
   var fModel=gv('dtfModel');
   var fDur=parseFloat(gv('dtfDur'))||0;
   var fEntryTime=gv('dtfEntryTime'); // เช่น "06:01-09:00"
+  var fCloseTime=gv('dtfCloseTime')||''; // Close Time filter
   var src=[];
   // Data trades
   if(_dtViewMode!=='port_only'){
@@ -9151,6 +9242,27 @@ function dtFiltered(){
           inRange=(etMin>=rStart&&etMin<=rEnd);
         }
         if(!inRange) return false;
+      }
+    }
+    // ── Close Time filter ──────────────────────────────────────────
+    if(fCloseTime){
+      var ctRaw=t.closeDate||'';
+      var ctStr='';
+      if(ctRaw.length>=16) ctStr=ctRaw.substring(11,16);
+      if(ctStr){
+        var ctMatch=ctStr.match(/^(\d{1,2}):(\d{2})/);
+        if(ctMatch){
+          var ctMin=parseInt(ctMatch[1])*60+parseInt(ctMatch[2]);
+          var crMatch=fCloseTime.match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+          if(crMatch){
+            var crStart=parseInt(crMatch[1])*60+parseInt(crMatch[2]);
+            var crEnd  =parseInt(crMatch[3])*60+parseInt(crMatch[4]);
+            var ctInRange;
+            if(crEnd<crStart){ ctInRange=(ctMin>=crStart)||(ctMin<=crEnd); }
+            else { ctInRange=(ctMin>=crStart&&ctMin<=crEnd); }
+            if(!ctInRange) return false;
+          }
+        }
       }
     }
     return true;
@@ -9396,7 +9508,7 @@ function dtUpdateFilterOpts(rows){
 function dtSaveFilters(resetPage){
   if(resetPage!==false) _dtPage=1;
   var state={};
-  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfDur','dtfEntryTime'].forEach(function(id){
+  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfDur','dtfEntryTime','dtfCloseTime'].forEach(function(id){
     var el=document.getElementById(id);if(el)state[id]=el.value;
   });
   lsSet('dt_filters',JSON.stringify(state));
@@ -9496,6 +9608,48 @@ function openPortSelectorModal(){
     box.appendChild(portSect);
   }
 
+  // ── Dataset section ──────────────────────────────────────────
+  if(window.DS && DS.list && DS.list.length > 1){
+    var dsSect=document.createElement('div');
+    dsSect.style.marginBottom='14px';
+    var dsHdr=document.createElement('div');
+    dsHdr.style.cssText='font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;';
+    dsHdr.textContent='Dataset ที่ต้องการแสดง';
+    dsSect.appendChild(dsHdr);
+    if(!window._dtSelectedDatasets || !_dtSelectedDatasets.length){
+      window._dtSelectedDatasets = DS.list.map(function(d){ return d.id; });
+    }
+    DS.list.forEach(function(ds){
+      var checked = !_dtSelectedDatasets || _dtSelectedDatasets.indexOf(ds.id)>=0;
+      var lbl=document.createElement('label');
+      lbl.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;font-size:13px;border:1px solid var(--border);background:var(--bg-input);margin-bottom:6px;transition:border-color .15s;';
+      lbl.addEventListener('mouseover',function(){this.style.borderColor='var(--purple)';});
+      lbl.addEventListener('mouseout',function(){this.style.borderColor='var(--border)';});
+      var cb=document.createElement('input');
+      cb.type='checkbox';
+      cb.checked=checked;
+      cb.style.cssText='width:16px;height:16px;cursor:pointer;accent-color:var(--purple);';
+      cb.addEventListener('change',function(){
+        if(!window._dtSelectedDatasets) window._dtSelectedDatasets=[];
+        if(this.checked){ if(_dtSelectedDatasets.indexOf(ds.id)<0) _dtSelectedDatasets.push(ds.id); }
+        else { window._dtSelectedDatasets=_dtSelectedDatasets.filter(function(x){return x!==ds.id;}); }
+        DT.trades=[]; dtLoad(true).then(function(){ dtRender(); });
+      });
+      // Tags
+      var tags=(ds.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+      var tagHtml=tags.map(function(t){
+        var c=DS_TAG_COLORS&&DS_TAG_COLORS[t]?DS_TAG_COLORS[t]:'#6b7280';
+        return '<span style="background:'+c+'22;border:1px solid '+c+';color:'+c+';border-radius:20px;font-size:9px;padding:1px 6px;">'+escHtml(t)+'</span>';
+      }).join(' ');
+      var sp=document.createElement('span');
+      sp.style.cssText='flex:1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+      sp.innerHTML='📦 <b>'+escHtml(ds.name)+'</b>'+(tagHtml?' '+tagHtml:'');
+      lbl.appendChild(cb); lbl.appendChild(sp);
+      dsSect.appendChild(lbl);
+    });
+    box.appendChild(dsSect);
+  }
+
   // View mode radios
   var modeSect=document.createElement('div');
   modeSect.style.marginBottom='16px';
@@ -9568,7 +9722,7 @@ function updatePortSelectorLabel(){
 
 
 function dtResetFilters(){
-  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfEntryTime'].forEach(function(id){
+  ['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfEntryTime','dtfCloseTime'].forEach(function(id){
     var el=document.getElementById(id);
     if(el){ el.selectedIndex=0; el.value=''; }
   });
@@ -9788,7 +9942,7 @@ function dtGetCardWidths(){
 }
 
 // ── Filter state persistence ──
-var _DT_FILTER_IDS=['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfDur','dtfEntryTime'];
+var _DT_FILTER_IDS=['dtfAsset','dtfResult','dtfDay','dtfSession','dtfCode','dtfMode','dtfClass','dtfModel','dtfFibo','dtfDur','dtfEntryTime','dtfCloseTime'];
 function dtSaveFilterState(){
   var state={};
   _DT_FILTER_IDS.forEach(function(id){
