@@ -7842,100 +7842,270 @@ async function dsOpenManage(){
   if(!window.DS || !DS.list || !DS.list.length) await dsLoad();
   if(!window.DS) window.DS = { list:[], current:'default' };
   if(!DS.list.length) DS.list = [{ id:'default', name:'Default' }];
+  _dsRebuildManageModal();
+}
+
+// TAG COLOR MAP
+var DS_TAG_COLORS = {
+  'Live':'#22c55e','Backtest':'#3b82f6','Prop Firm':'#f59e0b',
+  'Practice':'#a78bfa','Archive':'#6b7280','Other':'#ec4899'
+};
+
+function _dsRebuildManageModal(){
   var old = document.getElementById('dsManageModal');
   if(old) old.remove();
   var backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop open';
   backdrop.id = 'dsManageModal';
   backdrop.style.cssText = 'z-index:10000;';
+
   var box = document.createElement('div');
   box.className = 'modal-box';
-  box.style.maxWidth = '440px';
+  box.style.cssText = 'max-width:520px;max-height:90vh;display:flex;flex-direction:column;';
+
+  // ── Header ──────────────────────────────────────────────────────
   var hdr = document.createElement('div');
   hdr.className = 'modal-header';
-  var ttl = document.createElement('span');
-  ttl.textContent = '⚙️ จัดการ Datasets';
+  hdr.innerHTML = '<span style="font-size:14px;font-weight:600;">⚙️ จัดการ Datasets</span>';
   var xBtn = document.createElement('button');
   xBtn.textContent = '✕';
   xBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;';
   xBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
-  hdr.appendChild(ttl); hdr.appendChild(xBtn);
+  hdr.appendChild(xBtn);
   box.appendChild(hdr);
+
+  // ── Body ─────────────────────────────────────────────────────────
   var body = document.createElement('div');
-  body.style.padding = '12px';
-  DS.list.forEach(function(d){
-    var isCur = d.id === DS.current;
-    var isDef = d.id === 'default';
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--border);';
-    var lbl = document.createElement('span');
-    lbl.style.cssText = 'flex:1;font-size:13px;';
-    lbl.innerHTML = (isCur ? '<b>' : '') + '📦 ' + escHtml(d.name) + (isCur ? ' ✓</b>' : '');
-    row.appendChild(lbl);
-    if(!isDef){
-      var renBtn = document.createElement('button');
-      renBtn.textContent = '✏️ แก้ชื่อ';
-      renBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;';
-      renBtn.onclick = (function(did){ return function(){ dsRename(did, this); }; })(d.id);
-      row.appendChild(renBtn);
-    }
-    if(!isDef && !isCur){
-      var delBtn = document.createElement('button');
-      delBtn.textContent = '🗑';
-      delBtn.style.cssText = 'background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;';
-      delBtn.onclick = (function(did, b){ return function(){ dsDelete(did, b); }; })(d.id, delBtn);
-      row.appendChild(delBtn);
-    }
-    body.appendChild(row);
-  });
+  body.id = 'dsManageBody';
+  body.style.cssText = 'padding:10px 12px;overflow-y:auto;flex:1;';
+  _dsRenderRows(body);
   box.appendChild(body);
+
+  // ── Footer: Add Dataset ──────────────────────────────────────────
   var footer = document.createElement('div');
-  footer.style.padding = '0 12px 12px';
-  var footBtn = document.createElement('button');
-  footBtn.className = 'btn-sm';
-  footBtn.style.width = '100%';
-  footBtn.textContent = 'ปิด';
-  footBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
-  footer.appendChild(footBtn);
+  footer.style.cssText = 'padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;';
+  
+  var addInput = document.createElement('input');
+  addInput.id = 'dsQuickName';
+  addInput.className = 'settings-input';
+  addInput.placeholder = 'ชื่อ Dataset ใหม่...';
+  addInput.style.cssText = 'flex:1;height:32px;';
+  
+  var addBtn = document.createElement('button');
+  addBtn.className = 'btn-primary';
+  addBtn.style.cssText = 'white-space:nowrap;height:32px;padding:0 14px;font-size:12px;';
+  addBtn.textContent = '＋ เพิ่ม';
+  addBtn.onclick = async function(){
+    var name = addInput.value.trim();
+    if(!name){ addInput.focus(); return; }
+    var uid = _authSession && _authSession._sbUserId;
+    var id = 'ds_' + Date.now();
+    var sortOrder = DS.list.length;
+    if(_supabase && uid){
+      var res = await _supabase.from('datasets').insert({ id:id, user_id:uid, name:name, sort_order:sortOrder, tags:'', is_deleted:false });
+      if(res.error){ showToast('❌ '+res.error.message,'error'); return; }
+    }
+    DS.list.push({ id:id, name:name, sort_order:sortOrder, tags:'' });
+    addInput.value = '';
+    dsRenderSelector();
+    _dsRenderRows(document.getElementById('dsManageBody'));
+    showToast('✅ เพิ่ม Dataset "'+name+'" แล้ว','success');
+  };
+  addInput.onkeydown = function(e){ if(e.key==='Enter') addBtn.onclick(); };
+
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-sm';
+  closeBtn.style.cssText = 'white-space:nowrap;height:32px;';
+  closeBtn.textContent = 'ปิด';
+  closeBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
+
+  footer.appendChild(addInput);
+  footer.appendChild(addBtn);
+  footer.appendChild(closeBtn);
   box.appendChild(footer);
+
   backdrop.appendChild(box);
   document.body.appendChild(backdrop);
+  setTimeout(function(){ addInput.focus(); }, 80);
 }
 
-async function dsRename(id, btn){
-  var name = prompt('ชื่อใหม่สำหรับ Dataset:', dsGetName(id));
+function _dsRenderRows(body){
+  body.innerHTML = '';
+  if(!DS.list.length){
+    body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px;">ยังไม่มี Dataset</div>';
+    return;
+  }
+  DS.list.forEach(function(d, idx){
+    var isCur = d.id === DS.current;
+    var isDef = d.id === 'default';
+    var tags = (d.tags || '').split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+
+    var row = document.createElement('div');
+    row.dataset.dsid = d.id;
+    row.style.cssText = 'background:var(--bg-card);border:1px solid '+(isCur?'var(--purple)':'var(--border)')+';border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+
+    // Row top: order buttons + name + active badge
+    var top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;gap:8px;';
+
+    // Order buttons
+    var orderWrap = document.createElement('div');
+    orderWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+    var upBtn = document.createElement('button');
+    upBtn.textContent = '▲';
+    upBtn.title = 'เลื่อนขึ้น';
+    upBtn.disabled = idx === 0;
+    upBtn.style.cssText = 'background:none;border:none;color:'+(idx===0?'var(--border)':'var(--text-muted)')+';font-size:10px;cursor:'+(idx===0?'default':'pointer')+';line-height:1;padding:1px 3px;';
+    upBtn.onclick = (function(i){ return function(){ dsMoveRow(i, -1); }; })(idx);
+    var dnBtn = document.createElement('button');
+    dnBtn.textContent = '▼';
+    dnBtn.title = 'เลื่อนลง';
+    dnBtn.disabled = idx === DS.list.length - 1;
+    dnBtn.style.cssText = 'background:none;border:none;color:'+(idx===DS.list.length-1?'var(--border)':'var(--text-muted)')+';font-size:10px;cursor:'+(idx===DS.list.length-1?'default':'pointer')+';line-height:1;padding:1px 3px;';
+    dnBtn.onclick = (function(i){ return function(){ dsMoveRow(i, 1); }; })(idx);
+    orderWrap.appendChild(upBtn);
+    orderWrap.appendChild(dnBtn);
+    top.appendChild(orderWrap);
+
+    // Name
+    var nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'flex:1;font-size:13px;font-weight:'+(isCur?'600':'400')+';color:'+(isCur?'var(--purple)':'var(--text-primary)')+';';
+    nameSpan.textContent = '📦 ' + d.name;
+    top.appendChild(nameSpan);
+
+    // Active badge
+    if(isCur){
+      var badge = document.createElement('span');
+      badge.style.cssText = 'background:var(--purple);color:#fff;border-radius:20px;font-size:10px;padding:2px 8px;';
+      badge.textContent = 'ใช้งานอยู่';
+      top.appendChild(badge);
+    } else {
+      var switchBtn = document.createElement('button');
+      switchBtn.textContent = '▶ ใช้';
+      switchBtn.style.cssText = 'background:none;border:1px solid var(--purple);color:var(--purple);border-radius:20px;font-size:11px;padding:2px 8px;cursor:pointer;';
+      switchBtn.onclick = (function(did){ return function(){
+        document.getElementById('dsManageModal').remove();
+        dsSwitch(did);
+      }; })(d.id);
+      top.appendChild(switchBtn);
+    }
+
+    // Edit & Delete buttons
+    if(!isDef){
+      var editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.title = 'แก้ไข';
+      editBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:3px 7px;font-size:12px;cursor:pointer;';
+      editBtn.onclick = (function(did){ return function(){ dsOpenEdit(did); }; })(d.id);
+      top.appendChild(editBtn);
+
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.title = 'ลบ';
+      delBtn.style.cssText = 'background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 7px;font-size:12px;cursor:pointer;';
+      delBtn.onclick = (function(did, b){ return function(){ dsDelete(did, b); }; })(d.id, delBtn);
+      top.appendChild(delBtn);
+    }
+
+    row.appendChild(top);
+
+    // Tags row
+    var tagRow = document.createElement('div');
+    tagRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center;';
+    tags.forEach(function(t){
+      var color = DS_TAG_COLORS[t] || '#6b7280';
+      var chip = document.createElement('span');
+      chip.style.cssText = 'background:'+color+'22;border:1px solid '+color+';color:'+color+';border-radius:20px;font-size:10px;padding:1px 8px;cursor:pointer;';
+      chip.textContent = t;
+      chip.title = 'คลิกเพื่อลบ tag';
+      if(!isDef) chip.onclick = (function(did, tag){ return function(){ dsRemoveTag(did, tag); }; })(d.id, t);
+      tagRow.appendChild(chip);
+    });
+    // Add tag button
+    if(!isDef){
+      var addTagBtn = document.createElement('button');
+      addTagBtn.textContent = '＋ tag';
+      addTagBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--text-muted);border-radius:20px;font-size:10px;padding:1px 8px;cursor:pointer;';
+      addTagBtn.onclick = (function(did){ return function(){ dsAddTag(did); }; })(d.id);
+      tagRow.appendChild(addTagBtn);
+    }
+    row.appendChild(tagRow);
+    body.appendChild(row);
+  });
+}
+
+async function dsMoveRow(idx, dir){
+  var newIdx = idx + dir;
+  if(newIdx < 0 || newIdx >= DS.list.length) return;
+  var tmp = DS.list[idx];
+  DS.list[idx] = DS.list[newIdx];
+  DS.list[newIdx] = tmp;
+  // save sort_order to supabase
+  if(_supabase && _authSession && _authSession._sbUserId){
+    DS.list.forEach(async function(d, i){
+      await _supabase.from('datasets').update({sort_order:i}).eq('id',d.id);
+    });
+  }
+  dsRenderSelector();
+  _dsRenderRows(document.getElementById('dsManageBody'));
+}
+
+function dsOpenEdit(id){
+  var d = DS.list.find(function(x){ return x.id===id; });
+  if(!d) return;
+  var name = prompt('ชื่อใหม่:', d.name);
   if(!name || !name.trim()) return;
   name = name.trim();
-  if(_supabase){
-    var res = await _supabase.from('datasets').update({name:name}).eq('id',id);
-    if(res.error){ showToast('❌ '+res.error.message,'error'); return; }
-  }
-  var d = DS.list.find(function(x){ return x.id === id; });
-  if(d) d.name = name;
+  d.name = name;
+  if(_supabase) _supabase.from('datasets').update({name:name}).eq('id',id);
   dsRenderSelector();
-  dsOpenManage(); // re-render
+  _dsRenderRows(document.getElementById('dsManageBody'));
   showToast('✅ เปลี่ยนชื่อแล้ว','success');
 }
 
+function dsAddTag(id){
+  var d = DS.list.find(function(x){ return x.id===id; });
+  if(!d) return;
+  var presets = Object.keys(DS_TAG_COLORS).join(', ');
+  var tag = prompt('เพิ่ม Tag (preset: '+presets+'):\nหรือพิมพ์ชื่อใหม่เองก็ได้');
+  if(!tag || !tag.trim()) return;
+  tag = tag.trim();
+  var existing = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+  if(existing.indexOf(tag) >= 0){ showToast('Tag นี้มีอยู่แล้ว','error'); return; }
+  existing.push(tag);
+  d.tags = existing.join(',');
+  if(_supabase) _supabase.from('datasets').update({tags:d.tags}).eq('id',id);
+  _dsRenderRows(document.getElementById('dsManageBody'));
+}
+
+function dsRemoveTag(id, tag){
+  var d = DS.list.find(function(x){ return x.id===id; });
+  if(!d) return;
+  var existing = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(function(t){ return t && t!==tag; });
+  d.tags = existing.join(',');
+  if(_supabase) _supabase.from('datasets').update({tags:d.tags}).eq('id',id);
+  _dsRenderRows(document.getElementById('dsManageBody'));
+}
+
 async function dsDelete(id, btn){
-  if(!confirm('ลบ Dataset "'+dsGetName(id)+'" ?\n⚠️ ข้อมูล trades ทั้งหมดใน Dataset นี้จะถูกลบด้วย')) return;
-  btn.disabled = true;
+  if(!confirm('ลบ Dataset "'+dsGetName(id)+'" ?\n⚠️ trades ทั้งหมดใน Dataset นี้จะถูกลบด้วย')) return;
+  if(btn) btn.disabled = true;
   if(_supabase){
     var uid = _authSession && _authSession._sbUserId;
-    // soft-delete trades ใน dataset นี้
     await _supabase.from('data_trades').update({is_deleted:true}).eq('user_id',uid).eq('dataset_id',id);
-    // soft-delete dataset
     await _supabase.from('datasets').update({is_deleted:true}).eq('id',id);
   }
   DS.list = DS.list.filter(function(x){ return x.id !== id; });
-  if(DS.current === id) DS.current = 'default';
+  if(DS.current === id){ DS.current = 'default'; DT.trades = []; await dtLoad(true); dtRender(); }
   dsRenderSelector();
-  dsOpenManage();
+  _dsRenderRows(document.getElementById('dsManageBody'));
   showToast('🗑 ลบ Dataset แล้ว','success');
-  DT.trades = [];
-  await dtLoad(true);
-  dtRender();
 }
+
+async function dsRename(id, btn){
+  dsOpenEdit(id);
+}
+
 // ══════════════════════════════════════════════════════════════════
 
 async function dtLoad(forceReload){
