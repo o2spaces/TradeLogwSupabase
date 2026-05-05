@@ -799,7 +799,7 @@ var _supabase = null;
             <option value="default">Default</option>
           </select>
           <button onclick="dsOpenAdd()" title="สร้าง Dataset ใหม่" style="background:none;border:1px solid var(--purple);color:var(--purple);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">＋ ใหม่</button>
-          <button onclick="dsOpenManage()" title="จัดการ Dataset" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:20px;padding:3px 8px;font-size:12px;cursor:pointer;" title="จัดการ">⚙️</button>
+          <button onclick="dsOpenManage()" title="จัดการ Datasets" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:20px;padding:3px 8px;font-size:12px;cursor:pointer;" title="จัดการ">⚙️</button>
         </div>
       </div>
       <div style="display:flex;gap:7px;align-items:center;">
@@ -7774,13 +7774,15 @@ function dsGetName(id){
 }
 
 // ── เปิด modal สร้าง Dataset ใหม่ ────────────────────────────────
-function dsOpenAdd(){
+async function dsOpenAdd(){
+  if(!window.DS || !DS.list || !DS.list.length) await dsLoad();
+  if(!window.DS) window.DS = { list:[], current:'default' };
   var el = document.getElementById('dsAddModal');
   if(el) el.remove();
   var backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop open';
   backdrop.id = 'dsAddModal';
-  backdrop.style.cssText = 'z-index:9500;';
+  backdrop.style.cssText = 'z-index:10000;';
   var box = document.createElement('div');
   box.className = 'modal-box';
   box.style.maxWidth = '400px';
@@ -7836,13 +7838,16 @@ async function dsConfirmAdd(btn){
 }
 
 // ── Manage Modal ─────────────────────────────────────────────────
-function dsOpenManage(){
+async function dsOpenManage(){
+  if(!window.DS || !DS.list || !DS.list.length) await dsLoad();
+  if(!window.DS) window.DS = { list:[], current:'default' };
+  if(!DS.list.length) DS.list = [{ id:'default', name:'Default' }];
   var old = document.getElementById('dsManageModal');
   if(old) old.remove();
   var backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop open';
   backdrop.id = 'dsManageModal';
-  backdrop.style.cssText = 'z-index:9500;';
+  backdrop.style.cssText = 'z-index:10000;';
   var box = document.createElement('div');
   box.className = 'modal-box';
   box.style.maxWidth = '440px';
