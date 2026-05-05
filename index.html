@@ -2354,10 +2354,16 @@ async function syncFromSheet(onDone){
 
     var portRows = portRes.data || [];
     if(portRows.length === 0){
-      // user ใหม่ — สร้าง default portfolio
-      var defPort = { id:'default', user_id:uid, name:'Default', balance:0, fund:'', is_deleted:false };
-      await _supabase.from('portfolios').upsert(defPort, { onConflict:'user_id,id' });
-      portRows = [defPort];
+      // ตรวจสอบว่า user เคยลบ default ไปหรือเปล่า
+      var _delPorts=[]; try{_delPorts=JSON.parse(lsGet('tj_deleted_ports')||'[]');}catch(e){}
+      var _defaultDeleted = _delPorts.indexOf('default') >= 0;
+      if(!_defaultDeleted){
+        // user ใหม่จริงๆ — สร้าง default portfolio
+        var defPort = { id:'default', user_id:uid, name:'Default', balance:0, fund:'', is_deleted:false };
+        await _supabase.from('portfolios').upsert(defPort, { onConflict:'user_id,id' });
+        portRows = [defPort];
+      }
+      // ถ้า user ลบ default ไปแล้ว → ไม่สร้างกลับมา
     }
     S.portfolios = {};
     portRows.forEach(function(p){
@@ -2876,44 +2882,71 @@ async function confirmEditPortfolio(id,btn){
   showToast('✅ อัปเดตพอร์ตแล้ว','success');
 }
 function deletePortfolio(id,btn){
-  if(!confirm('ลบพอร์ตนี้? ข้อมูลออเดอร์ในพอร์ตนี้จะหายไปด้วย')) return;
+  var portName = (S.portfolios[id]&&S.portfolios[id].name)||id;
+  // ── In-app confirm dialog ────────────────────────────────────────
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.8);';
+  box.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">🗑 ลบพอร์ต</div>'
+    +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">ลบ <b>'+escHtml(portName)+'</b> ? ข้อมูล trades ในพอร์ตนี้จะหายไปด้วย</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+    +'<button id="_delPortCancel" class="btn-sm">ยกเลิก</button>'
+    +'<button id="_delPortConfirm" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;font-family:var(--font-main);">ลบ</button>'
+    +'</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.getElementById('_delPortCancel').onclick = function(){ overlay.remove(); };
+  document.getElementById('_delPortConfirm').onclick = async function(){
+    overlay.remove();
+    await _doDeletePortfolio(id, btn);
+  };
+}
+
+async function _doDeletePortfolio(id, btn){
+  // ── 1. Supabase soft-delete FIRST (await result) ─────────────────
+  if(_supabase && _authSession && _authSession._sbUserId){
+    var res = await _supabase.from('portfolios')
+      .update({ is_deleted:true })
+      .eq('id', id).eq('user_id', _authSession._sbUserId);
+    if(res.error){
+      showToast('❌ ลบไม่สำเร็จ: '+res.error.message, 'error');
+      return;
+    }
+  }
+  // ── 2. Update memory + localStorage ──────────────────────────────
   delete S.portfolios[id];
   lsRem('port_'+id+'_s');
   lsRem('port_'+id+'_t');
-  // บันทึก tombstone ใน localStorage — ป้องกันพอร์ตเด้งกลับมาหลัง syncFromSheet
   try{
     var deleted=JSON.parse(lsGet('tj_deleted_ports')||'[]');
     if(deleted.indexOf(id)<0) deleted.push(id);
     lsSet('tj_deleted_ports',JSON.stringify(deleted));
   }catch(e){}
-  btn.closest('div[style*=fixed]').remove();
+  // ── 3. Close edit modal if open ───────────────────────────────────
+  if(btn){ var modal=btn.closest('div[style*=fixed]'); if(modal) modal.remove(); }
+  // ── 4. Switch portfolio if needed ────────────────────────────────
   var remaining=Object.keys(S.portfolios);
-  if(S.currentPortfolio===id){
+  if(S.currentPortfolio===id || remaining.length===0){
     if(remaining.length>0){
       switchPortfolio(remaining[0]);
     } else {
-      // ถ้าไม่มีพอร์ตเหลือ และ default ก็ถูกลบไปแล้ว → สร้างพอร์ตใหม่ว่างๆ
-      var _delList=[]; try{ _delList=JSON.parse(lsGet('tj_deleted_ports')||'[]'); }catch(e){}
-      if(_delList.indexOf('default')>=0){
-        // default ถูกลบแล้ว สร้าง port ชื่อ main แทน
-        var _newId='port_'+Date.now();
-        S.portfolios[_newId]={name:'Main',balance:0,fund:''};
-        switchPortfolio(_newId);
-      } else {
-        S.portfolios['default']={name:'Default',balance:0,fund:''};
-        switchPortfolio('default');
+      // สร้าง portfolio ใหม่ (อย่าใช้ id 'default' ซ้ำ)
+      var newId='port_'+Date.now();
+      S.portfolios[newId]={name:'Main',balance:0,fund:''};
+      // บันทึกลง Supabase ด้วย
+      if(_supabase && _authSession && _authSession._sbUserId){
+        await _supabase.from('portfolios').insert({
+          id:newId, user_id:_authSession._sbUserId, name:'Main', balance:0, fund:'', is_deleted:false
+        });
       }
+      switchPortfolio(newId);
     }
   }
+  // ── 5. Re-render ──────────────────────────────────────────────────
   renderPortfolioBar();
   lsSet('tj_ports',JSON.stringify(S.portfolios));
-  if(_supabase && _authSession && _authSession._sbUserId){
-    _supabase.from('portfolios')
-      .update({ is_deleted:true })
-      .eq('id',id).eq('user_id',_authSession._sbUserId)
-      .then(function(r){ if(r.error) console.warn('deletePortfolio supabase:', r.error.message); });
-  }
-  showToast('🗑 ลบพอร์ตแล้ว','success');
+  showToast('🗑 ลบพอร์ต "'+portName+'" แล้ว','success');
 }
 
 // ── INLINE RENAME PORT (double-click on tab) ───────────────────
@@ -7756,9 +7789,11 @@ async function dsLoad(){
       .order('created_at', {ascending: true});
     if(res.error){ console.warn('[dsLoad]', res.error.message); return; }
     DS.list = res.data || [];
-    // เพิ่ม default ถ้ายังไม่มี
+    // ถ้าไม่มี default ใน Supabase → insert จริง แล้ว unshift
     if(!DS.list.find(function(d){ return d.id === 'default'; })){
-      DS.list.unshift({ id:'default', name:'Default', user_id: uid });
+      var defRow = { id:'default', user_id:uid, name:'Default', tags:'', sort_order:-1, is_deleted:false };
+      var insRes = await _supabase.from('datasets').upsert(defRow, { onConflict:'id' });
+      DS.list.unshift(insRes.error ? { id:'default', name:'Default', user_id:uid } : defRow);
     }
   }catch(e){ console.warn('[dsLoad]', e.message); }
   dsRenderSelector();
@@ -7941,7 +7976,7 @@ function _dsRenderRows(body){
   }
   DS.list.forEach(function(d, idx){
     var isCur = d.id === DS.current;
-    var isDef = d.id === 'default';
+    var isDef = false; // Default dataset can also be edited/deleted
     var tags = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
 
     var row = document.createElement('div');
@@ -7980,7 +8015,7 @@ function _dsRenderRows(body){
       chip.style.cssText = 'background:'+c+'22;color:'+c+';border-radius:20px;font-size:9px;padding:0 5px;cursor:pointer;flex-shrink:0;';
       chip.textContent = t;
       chip.title = 'ลบ tag';
-      if(!isDef) chip.onclick = (function(did,tag){ return function(e){ e.stopPropagation(); dsRemoveTag(did,tag); }; })(d.id,t);
+      chip.onclick = (function(did,tag){ return function(e){ e.stopPropagation(); dsRemoveTag(did,tag); }; })(d.id,t);
       nameRow.appendChild(chip);
     });
     info.appendChild(nameRow);
@@ -8170,9 +8205,21 @@ async function dsDelete(id, btn){
     await _supabase.from('datasets').update({is_deleted:true}).eq('id',id);
   }
   DS.list = DS.list.filter(function(x){ return x.id !== id; });
-  if(DS.current === id){ DS.current = 'default'; DT.trades = []; await dtLoad(true); dtRender(); }
+  if(DS.current === id){
+    var _remaining = DS.list.filter(function(x){ return x.id !== id; });
+    DS.current = _remaining.length > 0 ? _remaining[0].id : 'ds_'+Date.now();
+    // ถ้าไม่มีเหลือ สร้าง dataset ใหม่ชื่อ Main
+    if(_remaining.length === 0){
+      var _uid = _authSession && _authSession._sbUserId;
+      var _newDs = { id: DS.current, name:'Main', tags:'', sort_order:0 };
+      DS.list.push(_newDs);
+      if(_supabase && _uid) await _supabase.from('datasets').insert({ id:_newDs.id, user_id:_uid, name:'Main', tags:'', sort_order:0, is_deleted:false });
+    }
+    DT.trades = []; await dtLoad(true); dtRender();
+  }
   dsRenderSelector();
-  _dsRenderRows(document.getElementById('dsManageBody'));
+  var _body = document.getElementById('dsManageBody');
+  if(_body) _dsRenderRows(_body);
   showToast('🗑 ลบ Dataset แล้ว','success');
 }
 
