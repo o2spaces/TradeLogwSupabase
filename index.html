@@ -7754,7 +7754,7 @@ function dsRenderSelector(){
   if(!sel) return;
   var cur = DS.current || 'default';
   sel.innerHTML = DS.list.map(function(d){
-    return '<option value="'+d.id+'"'+(d.id===cur?' selected':'')+'>'+_esc(d.name)+'</option>';
+    return '<option value="'+d.id+'"'+(d.id===cur?' selected':'')+'>'+escHtml(d.name)+'</option>';
   }).join('');
 }
 
@@ -7870,7 +7870,7 @@ async function dsOpenManage(){
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--border);';
     var lbl = document.createElement('span');
     lbl.style.cssText = 'flex:1;font-size:13px;';
-    lbl.innerHTML = (isCur ? '<b>' : '') + '📦 ' + _esc(d.name) + (isCur ? ' ✓</b>' : '');
+    lbl.innerHTML = (isCur ? '<b>' : '') + '📦 ' + escHtml(d.name) + (isCur ? ' ✓</b>' : '');
     row.appendChild(lbl);
     if(!isDef){
       var renBtn = document.createElement('button');
