@@ -790,7 +790,18 @@ var _supabase = null;
   <div id="dataView">
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-size:15px;font-weight:600;color:var(--purple);display:flex;align-items:center;gap:8px;">🗃 Data Mode <span style="font-size:11px;font-weight:400;color:var(--text-muted);">เก็บข้อมูลแยกจากพอร์ต — รวมดูพอร์ตได้</span></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:15px;font-weight:600;color:var(--purple);display:flex;align-items:center;gap:8px;">🗃 Data Mode <span style="font-size:11px;font-weight:400;color:var(--text-muted);">เก็บข้อมูลแยกจากพอร์ต — รวมดูพอร์ตได้</span></div>
+        <!-- ── Dataset Selector ── -->
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">📦 Dataset:</span>
+          <select id="dsSelector" onchange="dsSwitch(this.value)" style="background:var(--bg-input);border:1px solid var(--purple);color:var(--text-primary);border-radius:20px;font-size:12px;padding:3px 10px;height:28px;max-width:160px;cursor:pointer;">
+            <option value="default">Default</option>
+          </select>
+          <button onclick="dsOpenAdd()" title="สร้าง Dataset ใหม่" style="background:none;border:1px solid var(--purple);color:var(--purple);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">＋ ใหม่</button>
+          <button onclick="dsOpenManage()" title="จัดการ Dataset" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:20px;padding:3px 8px;font-size:12px;cursor:pointer;" title="จัดการ">⚙️</button>
+        </div>
+      </div>
       <div style="display:flex;gap:7px;align-items:center;">
         <button class="btn-sm" onclick="dtDeduplicateAll()" title="ลบรายการซ้ำ" style="border-color:var(--amber);color:var(--amber);">🧹 ลบซ้ำ</button>
         <button class="btn-sm" onclick="dtConfirmClearAll()" style="border-color:var(--red);color:var(--red);">🗑 ลบทั้งหมด</button>
@@ -5646,6 +5657,7 @@ async function _sbDispatch(action, d){
     var drow = _tradeToRow(d, uid);
     // GAP 4 FIX: Data Mode uses _id as primary key — ensure it is used as the row id
     drow.id = d._id || d.id || (Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+    if(window.DS && DS.current) drow.dataset_id = DS.current;
     await _supabase.from('data_trades').upsert(drow, { onConflict:'user_id,id' });
   }
   else if(action === 'deleteDataTrade'){
@@ -5660,7 +5672,8 @@ async function _sbDispatch(action, d){
       var r = _tradeToRow(Object.assign({},t,{portfolio:port}), uid);
       delete r.is_deleted; return r;
     });
-    if(drows.length) await _supabase.from('data_trades').upsert(drows, { onConflict:'user_id,id' });
+    var dsId = (window.DS && DS.current) ? DS.current : 'default';
+    if(drows.length){ drows.forEach(function(r){ r.dataset_id = dsId; }); await _supabase.from('data_trades').upsert(drows, { onConflict:'user_id,id' }); }
   }
   else if(action === 'deduplicateDataTrades'){
     // fetch + dedup in memory → rewrite
@@ -7711,15 +7724,232 @@ function dtDeduplicateAll(){
 var DT_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var DT_SESSION_OPTS=['Sydney','Tokyo','London','New York'];
 
-async function dtLoad(){
-  // ถ้ามี Supabase และ memory ว่าง → ดึงจาก Supabase
-  if(_supabase && (!DT.trades || !DT.trades.length)){
+
+// ══════════════════════════════════════════════════════════════════
+//  DATASET  — แยกชุดข้อมูล data_trades ต่อ user
+// ══════════════════════════════════════════════════════════════════
+if(!window.DS) window.DS = { list: [], current: 'default' };
+
+// ── โหลด datasets จาก Supabase ──────────────────────────────────
+async function dsLoad(){
+  var uid = _authSession && _authSession._sbUserId;
+  if(!_supabase || !uid) return;
+  try{
+    var res = await _supabase.from('datasets')
+      .select('*').eq('user_id', uid).eq('is_deleted', false)
+      .order('created_at', {ascending: true});
+    if(res.error){ console.warn('[dsLoad]', res.error.message); return; }
+    DS.list = res.data || [];
+    // เพิ่ม default ถ้ายังไม่มี
+    if(!DS.list.find(function(d){ return d.id === 'default'; })){
+      DS.list.unshift({ id:'default', name:'Default', user_id: uid });
+    }
+  }catch(e){ console.warn('[dsLoad]', e.message); }
+  dsRenderSelector();
+}
+
+// ── render dropdown ──────────────────────────────────────────────
+function dsRenderSelector(){
+  var sel = document.getElementById('dsSelector');
+  if(!sel) return;
+  var cur = DS.current || 'default';
+  sel.innerHTML = DS.list.map(function(d){
+    return '<option value="'+d.id+'"'+(d.id===cur?' selected':'')+'>'+_esc(d.name)+'</option>';
+  }).join('');
+}
+
+// ── เปลี่ยน dataset ──────────────────────────────────────────────
+async function dsSwitch(id){
+  if(DS.current === id) return;
+  DS.current = id;
+  DT.trades = []; // clear memory → dtLoad จะ fetch ใหม่
+  showToast('📦 เปลี่ยนเป็น Dataset: '+dsGetName(id), 'info');
+  await dtLoad(true);
+  dtRender();
+}
+
+function dsGetName(id){
+  var d = DS.list.find(function(x){ return x.id === id; });
+  return d ? d.name : id;
+}
+
+// ── เปิด modal สร้าง Dataset ใหม่ ────────────────────────────────
+function dsOpenAdd(){
+  var el = document.getElementById('dsAddModal');
+  if(el) el.remove();
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop open';
+  backdrop.id = 'dsAddModal';
+  backdrop.style.cssText = 'z-index:9500;';
+  var box = document.createElement('div');
+  box.className = 'modal-box';
+  box.style.maxWidth = '400px';
+  var hdr = document.createElement('div');
+  hdr.className = 'modal-header';
+  var ttl = document.createElement('span');
+  ttl.textContent = '📦 สร้าง Dataset ใหม่';
+  var xBtn = document.createElement('button');
+  xBtn.textContent = '✕';
+  xBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;';
+  xBtn.onclick = function(){ document.getElementById('dsAddModal').remove(); };
+  hdr.appendChild(ttl); hdr.appendChild(xBtn);
+  box.appendChild(hdr);
+  var body = document.createElement('div');
+  body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:12px;';
+  body.innerHTML = [
+    '<div><div class="auth-label">ชื่อ Dataset *</div>',
+    '<input id="dsAddName" class="settings-input" placeholder="เช่น ICT 2024 Q1, FTMO Challenge..." style="width:100%;box-sizing:border-box;"></div>',
+    '<div><div class="auth-label">คำอธิบาย (ไม่บังคับ)</div>',
+    '<input id="dsAddDesc" class="settings-input" placeholder="อธิบายชุดข้อมูลนี้..." style="width:100%;box-sizing:border-box;"></div>',
+    '<div id="dsAddErr" style="color:var(--red);font-size:12px;display:none;"></div>',
+    '<div style="display:flex;gap:8px;justify-content:flex-end;">',
+    '<button id="dsAddCancel" class="btn-sm">ยกเลิก</button>',
+    '<button id="dsAddBtn" class="btn-primary">✓ สร้าง Dataset</button>',
+    '</div>'
+  ].join('');
+  box.appendChild(body);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.getElementById('dsAddCancel').onclick = function(){ document.getElementById('dsAddModal').remove(); };
+  document.getElementById('dsAddBtn').onclick = function(){ dsConfirmAdd(this); };
+  setTimeout(function(){ var n=document.getElementById('dsAddName'); if(n) n.focus(); }, 80);
+}
+
+async function dsConfirmAdd(btn){
+  var name = (document.getElementById('dsAddName').value || '').trim();
+  var desc = (document.getElementById('dsAddDesc').value || '').trim();
+  var err  = document.getElementById('dsAddErr');
+  if(!name){ err.textContent='❌ กรุณาใส่ชื่อ Dataset'; err.style.display='block'; return; }
+  var uid = _authSession && _authSession._sbUserId;
+  if(!uid){ err.textContent='❌ ไม่พบ session'; err.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = '⏳ กำลังสร้าง...';
+  var id = 'ds_' + Date.now();
+  if(_supabase){
+    var res = await _supabase.from('datasets').insert({ id:id, user_id:uid, name:name, description:desc, is_deleted:false });
+    if(res.error){ err.textContent='❌ '+res.error.message; err.style.display='block'; btn.disabled=false; btn.textContent='✓ สร้าง Dataset'; return; }
+  }
+  DS.list.push({ id:id, name:name, description:desc, user_id:uid });
+  dsRenderSelector();
+  document.getElementById('dsAddModal').remove();
+  showToast('✅ สร้าง Dataset "'+name+'" แล้ว', 'success');
+  await dsSwitch(id);
+}
+
+// ── Manage Modal ─────────────────────────────────────────────────
+function dsOpenManage(){
+  var old = document.getElementById('dsManageModal');
+  if(old) old.remove();
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop open';
+  backdrop.id = 'dsManageModal';
+  backdrop.style.cssText = 'z-index:9500;';
+  var box = document.createElement('div');
+  box.className = 'modal-box';
+  box.style.maxWidth = '440px';
+  var hdr = document.createElement('div');
+  hdr.className = 'modal-header';
+  var ttl = document.createElement('span');
+  ttl.textContent = '⚙️ จัดการ Datasets';
+  var xBtn = document.createElement('button');
+  xBtn.textContent = '✕';
+  xBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;';
+  xBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
+  hdr.appendChild(ttl); hdr.appendChild(xBtn);
+  box.appendChild(hdr);
+  var body = document.createElement('div');
+  body.style.padding = '12px';
+  DS.list.forEach(function(d){
+    var isCur = d.id === DS.current;
+    var isDef = d.id === 'default';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--border);';
+    var lbl = document.createElement('span');
+    lbl.style.cssText = 'flex:1;font-size:13px;';
+    lbl.innerHTML = (isCur ? '<b>' : '') + '📦 ' + _esc(d.name) + (isCur ? ' ✓</b>' : '');
+    row.appendChild(lbl);
+    if(!isDef){
+      var renBtn = document.createElement('button');
+      renBtn.textContent = '✏️ แก้ชื่อ';
+      renBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;';
+      renBtn.onclick = (function(did){ return function(){ dsRename(did, this); }; })(d.id);
+      row.appendChild(renBtn);
+    }
+    if(!isDef && !isCur){
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.style.cssText = 'background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;';
+      delBtn.onclick = (function(did, b){ return function(){ dsDelete(did, b); }; })(d.id, delBtn);
+      row.appendChild(delBtn);
+    }
+    body.appendChild(row);
+  });
+  box.appendChild(body);
+  var footer = document.createElement('div');
+  footer.style.padding = '0 12px 12px';
+  var footBtn = document.createElement('button');
+  footBtn.className = 'btn-sm';
+  footBtn.style.width = '100%';
+  footBtn.textContent = 'ปิด';
+  footBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
+  footer.appendChild(footBtn);
+  box.appendChild(footer);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+}
+
+async function dsRename(id, btn){
+  var name = prompt('ชื่อใหม่สำหรับ Dataset:', dsGetName(id));
+  if(!name || !name.trim()) return;
+  name = name.trim();
+  if(_supabase){
+    var res = await _supabase.from('datasets').update({name:name}).eq('id',id);
+    if(res.error){ showToast('❌ '+res.error.message,'error'); return; }
+  }
+  var d = DS.list.find(function(x){ return x.id === id; });
+  if(d) d.name = name;
+  dsRenderSelector();
+  dsOpenManage(); // re-render
+  showToast('✅ เปลี่ยนชื่อแล้ว','success');
+}
+
+async function dsDelete(id, btn){
+  if(!confirm('ลบ Dataset "'+dsGetName(id)+'" ?\n⚠️ ข้อมูล trades ทั้งหมดใน Dataset นี้จะถูกลบด้วย')) return;
+  btn.disabled = true;
+  if(_supabase){
+    var uid = _authSession && _authSession._sbUserId;
+    // soft-delete trades ใน dataset นี้
+    await _supabase.from('data_trades').update({is_deleted:true}).eq('user_id',uid).eq('dataset_id',id);
+    // soft-delete dataset
+    await _supabase.from('datasets').update({is_deleted:true}).eq('id',id);
+  }
+  DS.list = DS.list.filter(function(x){ return x.id !== id; });
+  if(DS.current === id) DS.current = 'default';
+  dsRenderSelector();
+  dsOpenManage();
+  showToast('🗑 ลบ Dataset แล้ว','success');
+  DT.trades = [];
+  await dtLoad(true);
+  dtRender();
+}
+// ══════════════════════════════════════════════════════════════════
+
+async function dtLoad(forceReload){
+  // ถ้ามี Supabase และ memory ว่าง (หรือ force) → ดึงจาก Supabase
+  if(_supabase && (forceReload || !DT.trades || !DT.trades.length)){
     try{
       var uid=_authSession&&_authSession._sbUserId;
       if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
       if(uid){
-        var port=S.currentPortfolio||'default';
-        var dtRes=await _supabase.from('data_trades').select('*').eq('user_id',uid).eq('portfolio',port).order('entry_date',{ascending:false});
+        var dsId = (window.DS && DS.current) ? DS.current : 'default';
+        var q = _supabase.from('data_trades').select('*').eq('user_id',uid);
+        // filter by dataset_id (ถ้า dataset_id เป็น default รองรับ null ด้วย)
+        if(dsId === 'default'){
+          q = q.or('dataset_id.eq.default,dataset_id.is.null');
+        } else {
+          q = q.eq('dataset_id', dsId);
+        }
+        q = q.eq('is_deleted', false);
+        var dtRes = await q.order('entry_date',{ascending:false});
         if(!dtRes.error && dtRes.data){
           DT.trades=dtRes.data.map(function(r){ return _tradeFromRow(r); });
           if(DT.trades.length) return;
@@ -10044,6 +10274,12 @@ function dtRenderCharts(rows){
 }
 
 function dtExportCSV(){
+  var dsName = (window.DS && DS.current) ? dsGetName(DS.current) : 'data';
+  var safeName = dsName.replace(/[^a-zA-Z0-9ก-๙_-]/g,'_');
+  var dateStr = new Date().toISOString().slice(0,10);
+  // override filename below
+  var _origFilename = 'data_trades_'+safeName+'_'+dateStr+'.csv';
+
   dtLoad();
   var rows=dtFiltered();
   if(!rows.length && DT.trades && DT.trades.length) rows=DT.trades;
@@ -10141,8 +10377,8 @@ function dtToggleDataPanel(){
     updateSidebarBtnLeft&&updateSidebarBtnLeft();
     updateSidebarBtnRight&&updateSidebarBtnRight();
     dtRestoreFilterState();
-    // Load from Supabase if needed then render
-    (async function(){ await dtLoad(); dtRender(); })();
+    // Load datasets + trades then render
+    (async function(){ await dsLoad(); await dtLoad(false); dtRender(); })();
   } else {
     panel.classList.remove('open');
     if(track){track.style.background='var(--bg-input)';track.style.borderColor='var(--border)';}
