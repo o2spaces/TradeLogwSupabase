@@ -7874,43 +7874,38 @@ function _dsRebuildManageModal(){
   backdrop.className = 'modal-backdrop open';
   backdrop.id = 'dsManageModal';
   backdrop.style.cssText = 'z-index:10000;';
-
   var box = document.createElement('div');
-  box.className = 'modal-box';
-  box.style.cssText = 'max-width:520px;max-height:90vh;display:flex;flex-direction:column;';
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.7);overflow:hidden;';
 
-  // ── Header ──────────────────────────────────────────────────────
+  // Header
   var hdr = document.createElement('div');
-  hdr.className = 'modal-header';
-  hdr.innerHTML = '<span style="font-size:14px;font-weight:600;">⚙️ จัดการ Datasets</span>';
+  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);';
+  hdr.innerHTML = '<span style="font-size:12px;font-weight:600;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;">Datasets</span>';
   var xBtn = document.createElement('button');
-  xBtn.textContent = '✕';
-  xBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;';
+  xBtn.innerHTML = '✕';
+  xBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;line-height:1;padding:2px 4px;';
   xBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
   hdr.appendChild(xBtn);
   box.appendChild(hdr);
 
-  // ── Body ─────────────────────────────────────────────────────────
+  // Body
   var body = document.createElement('div');
   body.id = 'dsManageBody';
-  body.style.cssText = 'padding:10px 12px;overflow-y:auto;flex:1;';
+  body.style.cssText = 'max-height:320px;overflow-y:auto;padding:6px 8px;';
   _dsRenderRows(body);
   box.appendChild(body);
 
-  // ── Footer: Add Dataset ──────────────────────────────────────────
+  // Footer: quick-add input
   var footer = document.createElement('div');
-  footer.style.cssText = 'padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;';
-  
+  footer.style.cssText = 'display:flex;gap:6px;padding:8px;border-top:1px solid var(--border);';
   var addInput = document.createElement('input');
   addInput.id = 'dsQuickName';
-  addInput.className = 'settings-input';
+  addInput.style.cssText = 'flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;font-size:12px;padding:4px 8px;outline:none;height:28px;';
   addInput.placeholder = 'ชื่อ Dataset ใหม่...';
-  addInput.style.cssText = 'flex:1;height:32px;';
-  
   var addBtn = document.createElement('button');
-  addBtn.className = 'btn-primary';
-  addBtn.style.cssText = 'white-space:nowrap;height:32px;padding:0 14px;font-size:12px;';
-  addBtn.textContent = '＋ เพิ่ม';
+  addBtn.style.cssText = 'background:var(--purple);color:#fff;border:none;border-radius:6px;font-size:11px;padding:0 10px;height:28px;cursor:pointer;white-space:nowrap;';
+  addBtn.textContent = '＋';
+  addBtn.title = 'เพิ่ม Dataset';
   addBtn.onclick = async function(){
     var name = addInput.value.trim();
     if(!name){ addInput.focus(); return; }
@@ -7925,127 +7920,116 @@ function _dsRebuildManageModal(){
     addInput.value = '';
     dsRenderSelector();
     _dsRenderRows(document.getElementById('dsManageBody'));
-    showToast('✅ เพิ่ม Dataset "'+name+'" แล้ว','success');
+    showToast('✅ เพิ่ม "'+name+'"','success');
   };
-  addInput.onkeydown = function(e){ if(e.key==='Enter') addBtn.onclick(); };
-
-  var closeBtn = document.createElement('button');
-  closeBtn.className = 'btn-sm';
-  closeBtn.style.cssText = 'white-space:nowrap;height:32px;';
-  closeBtn.textContent = 'ปิด';
-  closeBtn.onclick = function(){ document.getElementById('dsManageModal').remove(); };
-
+  addInput.onkeydown = function(e){ if(e.key==='Enter') addBtn.onclick(); if(e.key==='Escape') document.getElementById('dsManageModal').remove(); };
   footer.appendChild(addInput);
   footer.appendChild(addBtn);
-  footer.appendChild(closeBtn);
   box.appendChild(footer);
 
   backdrop.appendChild(box);
   document.body.appendChild(backdrop);
-  setTimeout(function(){ addInput.focus(); }, 80);
+  backdrop.addEventListener('mousedown', function(e){ if(e.target===backdrop) backdrop.remove(); });
+  setTimeout(function(){ addInput.focus(); }, 60);
 }
 
 function _dsRenderRows(body){
   body.innerHTML = '';
   if(!DS.list.length){
-    body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px;">ยังไม่มี Dataset</div>';
+    body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:16px;font-size:12px;">ยังไม่มี Dataset</div>';
     return;
   }
   DS.list.forEach(function(d, idx){
     var isCur = d.id === DS.current;
     var isDef = d.id === 'default';
-    var tags = (d.tags || '').split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+    var tags = (d.tags||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
 
     var row = document.createElement('div');
-    row.dataset.dsid = d.id;
-    row.style.cssText = 'background:var(--bg-card);border:1px solid '+(isCur?'var(--purple)':'var(--border)')+';border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+    row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:6px;transition:background .1s;'+(isCur?'background:var(--purple)1a;':'');
+    row.onmouseover = function(){ if(!isCur) this.style.background='var(--bg-secondary)'; };
+    row.onmouseout  = function(){ this.style.background = isCur?'rgba(139,92,246,.1)':''; };
 
-    // Row top: order buttons + name + active badge
-    var top = document.createElement('div');
-    top.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    // ▲▼ order
+    var oWrap = document.createElement('div');
+    oWrap.style.cssText = 'display:flex;flex-direction:column;gap:0px;opacity:.5;';
+    [['▲',idx===0,-1],['▼',idx===DS.list.length-1,1]].forEach(function(cfg){
+      var b = document.createElement('button');
+      b.textContent = cfg[0];
+      b.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:8px;line-height:1;padding:0 2px;cursor:'+(cfg[1]?'default':'pointer')+';opacity:'+(cfg[1]?'.2':'1')+';';
+      b.disabled = cfg[1];
+      b.onclick = (function(i,dir){ return function(){ dsMoveRow(i,dir); }; })(idx, cfg[2]);
+      oWrap.appendChild(b);
+    });
+    row.appendChild(oWrap);
 
-    // Order buttons
-    var orderWrap = document.createElement('div');
-    orderWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
-    var upBtn = document.createElement('button');
-    upBtn.textContent = '▲';
-    upBtn.title = 'เลื่อนขึ้น';
-    upBtn.disabled = idx === 0;
-    upBtn.style.cssText = 'background:none;border:none;color:'+(idx===0?'var(--border)':'var(--text-muted)')+';font-size:11px;cursor:'+(idx===0?'default':'pointer')+';line-height:1;padding:0 2px;opacity:'+(idx===0?'.3':'1')+';';
-    upBtn.onclick = (function(i){ return function(){ dsMoveRow(i, -1); }; })(idx);
-    var dnBtn = document.createElement('button');
-    dnBtn.textContent = '▼';
-    dnBtn.title = 'เลื่อนลง';
-    dnBtn.disabled = idx === DS.list.length - 1;
-    dnBtn.style.cssText = 'background:none;border:none;color:'+(idx===DS.list.length-1?'var(--border)':'var(--text-muted)')+';font-size:11px;cursor:'+(idx===DS.list.length-1?'default':'pointer')+';line-height:1;padding:0 2px;opacity:'+(idx===DS.list.length-1?'.3':'1')+';';
-    dnBtn.onclick = (function(i){ return function(){ dsMoveRow(i, 1); }; })(idx);
-    orderWrap.appendChild(upBtn);
-    orderWrap.appendChild(dnBtn);
-    top.appendChild(orderWrap);
+    // Name + tags inline
+    var info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0;';
+    var nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display:flex;align-items:center;gap:5px;';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:'+(isCur?'var(--purple)':'var(--text-muted)')+';flex-shrink:0;';
+    var nameEl = document.createElement('span');
+    nameEl.style.cssText = 'font-size:12px;font-weight:'+(isCur?'600':'400')+';color:'+(isCur?'var(--purple)':'var(--text-primary)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nameEl.textContent = d.name;
+    nameRow.appendChild(dot); nameRow.appendChild(nameEl);
+    // inline tags (tiny)
+    tags.forEach(function(t){
+      var c = (window.DS_TAG_COLORS&&DS_TAG_COLORS[t])||'#6b7280';
+      var chip = document.createElement('span');
+      chip.style.cssText = 'background:'+c+'22;color:'+c+';border-radius:20px;font-size:9px;padding:0 5px;cursor:pointer;flex-shrink:0;';
+      chip.textContent = t;
+      chip.title = 'ลบ tag';
+      if(!isDef) chip.onclick = (function(did,tag){ return function(e){ e.stopPropagation(); dsRemoveTag(did,tag); }; })(d.id,t);
+      nameRow.appendChild(chip);
+    });
+    info.appendChild(nameRow);
+    row.appendChild(info);
 
-    // Name
-    var nameSpan = document.createElement('span');
-    nameSpan.style.cssText = 'flex:1;font-size:13px;font-weight:'+(isCur?'600':'400')+';color:'+(isCur?'var(--purple)':'var(--text-primary)')+';';
-    nameSpan.textContent = '📦 ' + d.name;
-    top.appendChild(nameSpan);
+    // Action buttons (icon-only, shown on hover via CSS would be complex, show always but tiny)
+    var acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;gap:2px;flex-shrink:0;';
 
-    // Active badge
-    if(isCur){
-      var badge = document.createElement('span');
-      badge.style.cssText = 'background:var(--purple);color:#fff;border-radius:20px;font-size:10px;padding:2px 8px;';
-      badge.textContent = 'ใช้งานอยู่';
-      top.appendChild(badge);
-    } else {
-      var switchBtn = document.createElement('button');
-      switchBtn.textContent = '▶ ใช้';
-      switchBtn.style.cssText = 'background:none;border:1px solid var(--purple);color:var(--purple);border-radius:20px;font-size:11px;padding:2px 8px;cursor:pointer;';
-      switchBtn.onclick = (function(did){ return function(){
-        document.getElementById('dsManageModal').remove();
-        dsSwitch(did);
+    if(!isCur){
+      var useBtn = document.createElement('button');
+      useBtn.title = 'ใช้งาน Dataset นี้';
+      useBtn.textContent = '▶';
+      useBtn.style.cssText = 'background:none;border:1px solid var(--purple);color:var(--purple);border-radius:4px;font-size:10px;padding:2px 5px;cursor:pointer;';
+      useBtn.onclick = (function(did){ return function(){
+        document.getElementById('dsManageModal').remove(); dsSwitch(did);
       }; })(d.id);
-      top.appendChild(switchBtn);
+      acts.appendChild(useBtn);
+    } else {
+      var curBadge = document.createElement('span');
+      curBadge.style.cssText = 'font-size:9px;color:var(--purple);padding:2px 4px;';
+      curBadge.textContent = '✓';
+      acts.appendChild(curBadge);
     }
 
-    // Edit & Delete buttons
     if(!isDef){
+      var tagBtn = document.createElement('button');
+      tagBtn.title = 'เพิ่ม/จัดการ tag';
+      tagBtn.textContent = '#';
+      tagBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;font-size:10px;padding:2px 5px;cursor:pointer;font-family:monospace;';
+      tagBtn.onclick = (function(did){ return function(){ dsAddTag(did); }; })(d.id);
+      acts.appendChild(tagBtn);
+
       var editBtn = document.createElement('button');
-      editBtn.textContent = '✏️';
-      editBtn.title = 'แก้ไข';
-      editBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:3px 7px;font-size:12px;cursor:pointer;';
+      editBtn.title = 'แก้ชื่อ';
+      editBtn.textContent = '✎';
+      editBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;font-size:11px;padding:2px 5px;cursor:pointer;';
       editBtn.onclick = (function(did){ return function(){ dsOpenEdit(did); }; })(d.id);
-      top.appendChild(editBtn);
+      acts.appendChild(editBtn);
 
       var delBtn = document.createElement('button');
-      delBtn.textContent = '🗑';
       delBtn.title = 'ลบ';
-      delBtn.style.cssText = 'background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:3px 7px;font-size:12px;cursor:pointer;';
+      delBtn.textContent = '×';
+      delBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;font-size:13px;padding:1px 5px;cursor:pointer;line-height:1;';
       delBtn.onclick = (function(did, b){ return function(){ dsDelete(did, b); }; })(d.id, delBtn);
-      top.appendChild(delBtn);
+      acts.appendChild(delBtn);
     }
 
-    row.appendChild(top);
-
-    // Tags row
-    var tagRow = document.createElement('div');
-    tagRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center;';
-    tags.forEach(function(t){
-      var color = DS_TAG_COLORS[t] || '#6b7280';
-      var chip = document.createElement('span');
-      chip.style.cssText = 'background:'+color+'22;border:1px solid '+color+';color:'+color+';border-radius:20px;font-size:10px;padding:1px 8px;cursor:pointer;';
-      chip.textContent = t;
-      chip.title = 'คลิกเพื่อลบ tag';
-      if(!isDef) chip.onclick = (function(did, tag){ return function(){ dsRemoveTag(did, tag); }; })(d.id, t);
-      tagRow.appendChild(chip);
-    });
-    // Add tag button
-    if(!isDef){
-      var addTagBtn = document.createElement('button');
-      addTagBtn.textContent = '＋ tag';
-      addTagBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--text-muted);border-radius:20px;font-size:10px;padding:1px 8px;cursor:pointer;';
-      addTagBtn.onclick = (function(did){ return function(){ dsAddTag(did); }; })(d.id);
-      tagRow.appendChild(addTagBtn);
-    }
-    row.appendChild(tagRow);
+    row.appendChild(acts);
     body.appendChild(row);
   });
 }
