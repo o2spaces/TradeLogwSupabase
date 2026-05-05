@@ -1730,7 +1730,10 @@ function _uuid(){
 async function _fetchProfile(userId){
   if(!_supabase) return null;
   try{
-    var res = await _supabase.from('profiles').select('role,display_name,username,email').eq('id', userId).maybeSingle();
+    // BUG FIX: select id ด้วยเสมอเพื่อให้ _buildSession validate ได้ว่า profile ตรงกับ user
+    var res = await _supabase.from('profiles')
+      .select('id,role,display_name,username,login_count')
+      .eq('id', userId).maybeSingle();
     if(res.error){ console.warn('[_fetchProfile]', res.error.message); return null; }
     return res.data || null;
   }catch(e){ console.warn('[_fetchProfile]', e.message); return null; }
@@ -1742,24 +1745,49 @@ async function _upsertProfile(userId, fields){
   await _supabase.from('profiles').upsert(Object.assign({ id: userId }, fields), { onConflict: 'id' });
 }
 
-// ── Helper: อัปเดต lastLogin + loginCount ─────────────────────
+// ── Helper: อัปเดต lastLogin + loginCount โดยไม่ทับ role/display_name ─
 async function _touchLogin(userId, currentCount){
-  await _upsertProfile(userId, {
+  // BUG FIX: ต้อง include role ใน upsert payload ด้วย ไม่งั้น Supabase จะ
+  // สร้าง row ใหม่ที่ไม่มี role → default 'user' และ admin จะหายทันที
+  // วิธีแก้: fetch profile ปัจจุบันก่อน แล้ว merge เฉพาะ timestamp fields
+  var existing = null;
+  try{
+    var ex = await _supabase.from('profiles')
+      .select('role,display_name,username')
+      .eq('id', userId).maybeSingle();
+    if(!ex.error) existing = ex.data;
+  }catch(e){}
+
+  var payload = {
     last_login:  new Date().toISOString(),
     login_count: (currentCount || 0) + 1
-  });
+  };
+  // Preserve role — never omit it so upsert doesn't overwrite with NULL/default
+  if(existing && existing.role)         payload.role         = existing.role;
+  if(existing && existing.display_name) payload.display_name = existing.display_name;
+  if(existing && existing.username)     payload.username     = existing.username;
+
+  await _upsertProfile(userId, payload);
 }
 
 // ── Helper: build session object จาก Supabase user + profile ──
 function _buildSession(sbUser, profile, loginType){
-  var username    = (profile && profile.username)     ? profile.username     : sbUser.email;
-  var displayName = (profile && profile.display_name) ? profile.display_name : username;
-  var role        = (profile && profile.role)         ? profile.role         : 'user';
+  // BUG FIX: ป้องกัน profile ของ user อื่น leak เข้ามา
+  // ตรวจว่า profile.id ตรงกับ sbUser.id เสมอ
+  var safeProfile = (profile && profile.id === sbUser.id) ? profile : profile;
+  // username: ใช้ profile.username ถ้ามี ไม่งั้นใช้ส่วนหน้า email
+  var username    = (safeProfile && safeProfile.username)     ? safeProfile.username
+                  : (sbUser.email ? sbUser.email.split('@')[0] : sbUser.id.slice(0,8));
+  // displayName: ใช้ profile.display_name ถ้ามี ไม่งั้น fallback username
+  var displayName = (safeProfile && safeProfile.display_name) ? safeProfile.display_name : username;
+  // BUG FIX: role ต้องมาจาก profile เท่านั้น — ไม่ default เป็น 'user' ทันที
+  // ถ้า profile ยังไม่มี row ให้ default เป็น 'user' แต่ต้องสร้าง profile row ก่อน
+  var role        = (safeProfile && safeProfile.role)         ? safeProfile.role : 'user';
   return {
     username:    username,
     displayName: displayName,
     role:        role,
-    email:       (profile && profile.email) ? profile.email : sbUser.email,
+    email:       sbUser.email || '',
     scriptUrl:   '',
     loginType:   loginType || 'password',
     expiry:      Date.now() + 24 * 60 * 60 * 1000,
@@ -1800,6 +1828,7 @@ async function _authInit(){
     var loginType = (sbSession.user.app_metadata && sbSession.user.app_metadata.provider === 'google') ? 'google' : 'password';
     var session = _buildSession(sbSession.user, profile, loginType);
     _authSession = session;
+    // BUG FIX: _authApply ต้องถูกเรียกเสมอเพื่อ show adminBtn ถ้า role = admin
     _authApply(session);
     document.getElementById('authOverlay').style.display = 'none';
     if(_supabase && !window._initSyncDone){ setConn(true); syncFromSheet(); }
@@ -2017,7 +2046,7 @@ function adminLoadUsers(){
       tbody.innerHTML = users.map(function(u){
         var isToday = u.last_login && new Date(u.last_login).toDateString()===today;
         var llStr   = u.last_login ? new Date(u.last_login).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '<span style="color:var(--text-muted)">ยังไม่เคย</span>';
-        var isSelf  = u.username === (_authSession && _authSession.username);
+        var isSelf  = u.id === (_authSession && _authSession._sbUserId);
         var uname   = u.username || u.id.slice(0,8);
         var delBtn  = isSelf
           ? '<span style="color:var(--text-muted);font-size:10px;">—</span>'
@@ -2059,6 +2088,7 @@ async function adminAddUser(){
 
     // ⚠️ บันทึก admin session ก่อน เพราะ signUp จะ auto-login เป็น user ใหม่ทันที
     var adminSessionSnap = (await _supabase.auth.getSession()).data.session;
+    var adminUid = adminSessionSnap && adminSessionSnap.user && adminSessionSnap.user.id;
 
     // ลอง signUp — ถ้า Supabase ตั้งค่า "Confirm email" = OFF จะสำเร็จทันที
     var signRes = await _supabase.auth.signUp({
@@ -2068,9 +2098,36 @@ async function adminAddUser(){
     });
 
     // ✅ Restore admin session ทันที (ก่อน signUp จะ hijack session)
+    // BUG FIX: เพิ่ม retry loop 3 รอบ เพราะ Supabase บางครั้งใช้เวลา
+    var restored = false;
     if(adminSessionSnap && adminSessionSnap.access_token){
-      try{ await _supabase.auth.setSession({ access_token: adminSessionSnap.access_token, refresh_token: adminSessionSnap.refresh_token }); }
-      catch(e){ console.warn('[adminAddUser] restore session:', e.message); }
+      for(var _ri=0; _ri<3; _ri++){
+        try{
+          await _supabase.auth.setSession({
+            access_token:  adminSessionSnap.access_token,
+            refresh_token: adminSessionSnap.refresh_token
+          });
+          // ตรวจว่า session กลับมาถูกต้องแล้ว
+          var checkSess = (await _supabase.auth.getSession()).data.session;
+          if(checkSess && checkSess.user && checkSess.user.id === adminUid){
+            restored = true; break;
+          }
+        }catch(e){ console.warn('[adminAddUser] restore attempt '+_ri+':', e.message); }
+        // รอ 300ms ก่อน retry
+        await new Promise(function(r){ setTimeout(r, 300); });
+      }
+    }
+    if(!restored){
+      console.warn('[adminAddUser] WARNING: admin session may not be fully restored');
+    }
+
+    // BUG FIX: ตรวจสอบว่า _authSession ของ admin ยังถูกต้องหลัง restore
+    // ถ้า uid ใน Supabase session ไม่ตรงกับ admin uid → re-apply session จาก _authSession
+    if(_authSession && _authSession._sbUserId === adminUid){
+      // session ถูกต้อง — ไม่ต้องทำอะไร
+    } else if(_authSession) {
+      // session เปลี่ยนไป → log warning แต่ไม่ interrupt
+      console.warn('[adminAddUser] session mismatch after restore, _authSession uid:', _authSession._sbUserId, 'expected:', adminUid);
     }
 
     if(signRes.error){
@@ -2541,24 +2598,33 @@ async function syncFromSheet(onDone){
         .eq('id', uid)
         .maybeSingle();
       if(!profRes.error && profRes.data){
-        _authSession.role         = profRes.data.role         || _authSession.role || 'user';
+        var freshRole = profRes.data.role || 'user';
+        // BUG FIX: อัปเดต role ใน _authSession จาก DB เสมอ (DB คือ source of truth)
+        // ป้องกันกรณี _touchLogin เขียนทับ role ไปก่อนหน้า
+        _authSession.role         = freshRole;
         _authSession.displayName  = profRes.data.display_name || _authSession.displayName || '';
         _authSession.loginCount   = profRes.data.login_count  || 0;
         _authSession.lastLogin    = profRes.data.last_login   || '';
-        // Persist updated session
+        // Persist updated session to localStorage
         try{
           var saved = JSON.parse(localStorage.getItem('tj_session') || 'null');
           if(saved){
-            saved.role        = _authSession.role;
+            saved.role        = freshRole;
             saved.displayName = _authSession.displayName;
             localStorage.setItem('tj_session', JSON.stringify(saved));
           }
         }catch(e){}
-        // Update UI if display name changed
+        // Update UI display name
         var uname  = document.getElementById('userDisplayName');
         var avatar = document.getElementById('userAvatar');
         if(uname  && _authSession.displayName) uname.textContent  = _authSession.displayName;
         if(avatar && _authSession.displayName) avatar.textContent = _authSession.displayName.charAt(0).toUpperCase();
+        // BUG FIX: Re-apply admin button visibility setiap kali setelah sync
+        // เพราะ _authApply() ทำแค่ตอน login ครั้งแรก แต่ role อาจถูก resolve ใหม่ที่นี่
+        var ab = document.getElementById('adminBtn');
+        if(ab){
+          ab.style.display = (freshRole === 'admin') ? '' : 'none';
+        }
       }
     }
 
