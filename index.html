@@ -7841,11 +7841,19 @@ async function dsLoad(){
       .order('created_at', {ascending: true});
     if(res.error){ console.warn('[dsLoad]', res.error.message); return; }
     DS.list = res.data || [];
-    // ถ้าไม่มี default ใน Supabase → insert จริง แล้ว unshift
+    // ถ้าไม่มี dataset เลย และ default ไม่เคยถูกลบ → สร้าง default ให้
     if(!DS.list.find(function(d){ return d.id === 'default'; })){
-      var defRow = { id:'default', user_id:uid, name:'Default', tags:'', sort_order:-1, is_deleted:false };
-      var insRes = await _supabase.from('datasets').upsert(defRow, { onConflict:'id' });
-      DS.list.unshift(insRes.error ? { id:'default', name:'Default', user_id:uid } : defRow);
+      // เช็คว่า default เคยถูก soft-delete ไปแล้วหรือเปล่า
+      var delCheck = await _supabase.from('datasets')
+        .select('id,is_deleted').eq('id','default').eq('user_id',uid).maybeSingle();
+      var wasDeleted = delCheck.data && delCheck.data.is_deleted === true;
+      if(!wasDeleted && DS.list.length === 0){
+        // user ใหม่จริงๆ — สร้าง default
+        var defRow = { id:'default', user_id:uid, name:'Default', tags:'', sort_order:-1, is_deleted:false };
+        var insRes = await _supabase.from('datasets').upsert(defRow, { onConflict:'id' });
+        if(!insRes.error) DS.list.unshift(defRow);
+      }
+      // ถ้าเคยลบแล้ว → ไม่สร้างกลับมา
     }
   }catch(e){ console.warn('[dsLoad]', e.message); }
   dsRenderSelector();
