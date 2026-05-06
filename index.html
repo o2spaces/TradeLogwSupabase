@@ -1797,11 +1797,6 @@ async function _authInit(){
   var sbSession = res.data && res.data.session;
   if(sbSession && sbSession.user){
     var profile = await _fetchProfile(sbSession.user.id);
-    // ถ้า profile null → retry 1 ครั้ง (อาจเกิดจาก RLS หรือ network)
-    if(!profile){
-      await new Promise(function(r){setTimeout(r,800);});
-      profile = await _fetchProfile(sbSession.user.id);
-    }
     var loginType = (sbSession.user.app_metadata && sbSession.user.app_metadata.provider === 'google') ? 'google' : 'password';
     var session = _buildSession(sbSession.user, profile, loginType);
     _authSession = session;
@@ -1920,15 +1915,9 @@ function _authApply(session){
   if(typeof loadDropOptions === 'function') try{ loadDropOptions(); }catch(e){}
   // reload strategies ด้วย user-scoped key หลัง login
   if(typeof initStratRow === 'function') try{ initStratRow(); }catch(e){}
-  // Admin button
-  var ab = document.getElementById('adminBtn');
-  if(ab){
-    if(session.role === 'admin'){
-      ab.style.display = '';
-      ab.title = '👥 Admin Panel — role: admin';
-    } else {
-      ab.style.display = 'none';
-    }
+  if(session.role === 'admin'){
+    var ab = document.getElementById('adminBtn');
+    if(ab) ab.style.display = '';
   }
   var lb = document.getElementById('logoutBtn');
   if(lb) lb.style.display = '';
@@ -2070,6 +2059,7 @@ async function adminAddUser(){
 
     // ⚠️ บันทึก admin session ก่อน เพราะ signUp จะ auto-login เป็น user ใหม่ทันที
     var adminSessionSnap = (await _supabase.auth.getSession()).data.session;
+    var adminAuthSessionBackup = _authSession ? JSON.parse(JSON.stringify(_authSession)) : null;
 
     // ลอง signUp — ถ้า Supabase ตั้งค่า "Confirm email" = OFF จะสำเร็จทันที
     var signRes = await _supabase.auth.signUp({
@@ -2080,8 +2070,31 @@ async function adminAddUser(){
 
     // ✅ Restore admin session ทันที (ก่อน signUp จะ hijack session)
     if(adminSessionSnap && adminSessionSnap.access_token){
-      try{ await _supabase.auth.setSession({ access_token: adminSessionSnap.access_token, refresh_token: adminSessionSnap.refresh_token }); }
-      catch(e){ console.warn('[adminAddUser] restore session:', e.message); }
+      try{
+        // 1. restore supabase client session
+        await _supabase.auth.setSession({
+          access_token:  adminSessionSnap.access_token,
+          refresh_token: adminSessionSnap.refresh_token
+        });
+        // 2. fetch admin profile จาก Supabase เพื่อให้ได้ role ที่ถูกต้อง
+        var adminUser = adminSessionSnap.user;
+        if(adminUser){
+          var adminProfile = await _fetchProfile(adminUser.id);
+          // ถ้า fetch ไม่ได้ ใช้ค่าจาก _authSession เดิมที่บันทึกไว้
+          if(!adminProfile){
+            var _bk = adminAuthSessionBackup || _authSession;
+            if(_bk) adminProfile = {
+              role:         _bk.role,
+              username:     _bk.username,
+              display_name: _bk.displayName,
+              email:        _bk.email
+            };
+          }
+          _authSession = _buildSession(adminUser, adminProfile, 'password');
+          _applySession(_authSession);
+          console.log('[adminAddUser] Admin session restored — role:', _authSession.role);
+        }
+      }catch(e){ console.warn('[adminAddUser] restore session:', e.message); }
     }
 
     if(signRes.error){
@@ -2134,13 +2147,28 @@ async function adminAddUser(){
 
 async function adminDeleteUser(userId, username){
   var displayName = decodeURIComponent(username) || userId.slice(0,8);
-  if(!confirm('ลบ User "'+displayName+'" ออกจากระบบ?\n\nข้อมูล Trade ของ User จะยังอยู่ใน Supabase')) return;
-  if(!_supabase){ showToast('❌ ไม่ได้ตั้งค่า Supabase','error'); return; }
-  // ลบ profile ก่อน (auth.users ต้องลบผ่าน Service Role / Edge Function)
-  var res = await _supabase.from('profiles').delete().eq('id', userId);
-  if(res.error){ showToast('❌ ลบไม่ได้: '+res.error.message,'error'); return; }
-  showToast('✅ ลบ Profile "'+displayName+'" แล้ว — หากต้องการลบ Auth user ด้วยต้องใช้ Supabase Dashboard → Authentication → Users','success');
-  adminLoadUsers();
+  // in-app confirm
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.8);';
+  box.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">🗑 ลบ User</div>'
+    +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">ลบ <b>'+escHtml(displayName)+'</b> ออกจากระบบ?<br><span style="font-size:11px;">ข้อมูล Trade จะยังอยู่ใน Supabase</span></div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+    +'<button id="_delUserCancel" class="btn-sm">ยกเลิก</button>'
+    +'<button id="_delUserConfirm" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;font-family:var(--font-main);">ลบ</button>'
+    +'</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.getElementById('_delUserCancel').onclick = function(){ overlay.remove(); };
+  document.getElementById('_delUserConfirm').onclick = async function(){
+    overlay.remove();
+    if(!_supabase){ showToast('❌ ไม่ได้ตั้งค่า Supabase','error'); return; }
+    var res = await _supabase.from('profiles').delete().eq('id', userId);
+    if(res.error){ showToast('❌ ลบไม่ได้: '+res.error.message,'error'); return; }
+    showToast('✅ ลบ "'+displayName+'" แล้ว','success');
+    adminLoadUsers();
+  };
 }
 </script>
 
@@ -2570,13 +2598,9 @@ async function syncFromSheet(onDone){
         var avatar = document.getElementById('userAvatar');
         if(uname  && _authSession.displayName) uname.textContent  = _authSession.displayName;
         if(avatar && _authSession.displayName) avatar.textContent = _authSession.displayName.charAt(0).toUpperCase();
-        // แสดง adminBtn ถ้า role = admin
-        if(_authSession.role === 'admin'){
-          var ab = document.getElementById('adminBtn');
-          if(ab) ab.style.display = '';
-        }
       }
     }
+
     _syncInProgress = false;
     setConn(true);
     if(sheetRes){ sheetRes.style.color='var(--green)'; sheetRes.textContent='✅ Sync เสร็จแล้ว!'; }
