@@ -1920,9 +1920,15 @@ function _authApply(session){
   if(typeof loadDropOptions === 'function') try{ loadDropOptions(); }catch(e){}
   // reload strategies ด้วย user-scoped key หลัง login
   if(typeof initStratRow === 'function') try{ initStratRow(); }catch(e){}
-  if(session.role === 'admin'){
-    var ab = document.getElementById('adminBtn');
-    if(ab) ab.style.display = '';
+  // Admin button
+  var ab = document.getElementById('adminBtn');
+  if(ab){
+    if(session.role === 'admin'){
+      ab.style.display = '';
+      ab.title = '👥 Admin Panel — role: admin';
+    } else {
+      ab.style.display = 'none';
+    }
   }
   var lb = document.getElementById('logoutBtn');
   if(lb) lb.style.display = '';
@@ -2564,16 +2570,11 @@ async function syncFromSheet(onDone){
         var avatar = document.getElementById('userAvatar');
         if(uname  && _authSession.displayName) uname.textContent  = _authSession.displayName;
         if(avatar && _authSession.displayName) avatar.textContent = _authSession.displayName.charAt(0).toUpperCase();
-      }
-    }
-
-    // Re-check role จาก Supabase (ป้องกัน role หาย)
-    if(_authSession && _authSession._sbUserId){
-      var latestProf = await _fetchProfile(_authSession._sbUserId);
-      if(latestProf && latestProf.role && latestProf.role !== _authSession.role){
-        _authSession.role = latestProf.role;
-        _authApply(_authSession);
-        try{ var sv=JSON.parse(localStorage.getItem('tj_session')||'null'); if(sv){sv.role=latestProf.role;localStorage.setItem('tj_session',JSON.stringify(sv));} }catch(e){}
+        // แสดง adminBtn ถ้า role = admin
+        if(_authSession.role === 'admin'){
+          var ab = document.getElementById('adminBtn');
+          if(ab) ab.style.display = '';
+        }
       }
     }
     _syncInProgress = false;
