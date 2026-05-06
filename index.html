@@ -5758,7 +5758,8 @@ async function _sbDispatch(action, d){
     var drow = _tradeToRow(d, uid);
     // GAP 4 FIX: Data Mode uses _id as primary key — ensure it is used as the row id
     drow.id = d._id || d.id || (Date.now().toString(36)+Math.random().toString(36).slice(2,8));
-    if(window.DS && DS.current) drow.dataset_id = DS.current;
+    var _selEl2 = document.getElementById('importDsSelect');
+    drow.dataset_id = (_selEl2 && _selEl2.value) ? _selEl2.value : ((window.DS && DS.current) ? DS.current : 'default');
     await _supabase.from('data_trades').upsert(drow, { onConflict:'user_id,id' });
   }
   else if(action === 'deleteDataTrade'){
@@ -5773,7 +5774,8 @@ async function _sbDispatch(action, d){
       var r = _tradeToRow(Object.assign({},t,{portfolio:port}), uid);
       delete r.is_deleted; return r;
     });
-    var dsId = (window.DS && DS.current) ? DS.current : 'default';
+    var _selEl = document.getElementById('importDsSelect');
+    var dsId = (_selEl && _selEl.value) ? _selEl.value : ((window.DS && DS.current) ? DS.current : 'default');
     if(drows.length){ drows.forEach(function(r){ r.dataset_id = dsId; }); await _supabase.from('data_trades').upsert(drows, { onConflict:'user_id,id' }); }
   }
   else if(action === 'deduplicateDataTrades'){
@@ -8909,6 +8911,20 @@ function dtOpenImport(){
   importSwitchTab('paste');
   if(!_dtPanelOpen) dtToggleDataPanel();
   openM('mImportSheet');
+  // populate dataset dropdown
+  setTimeout(function(){
+    var sel = document.getElementById('importDsSelect');
+    if(!sel) return;
+    sel.innerHTML = '';
+    var list = (window.DS && DS.list && DS.list.length) ? DS.list : [{id:'default',name:'Default'}];
+    list.forEach(function(d){
+      var opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = '📦 ' + d.name;
+      if(d.id === (window.DS && DS.current ? DS.current : 'default')) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }, 80);
 }
 function importSwitchTab(tab){
   var ps=document.getElementById('importPasteSection');
@@ -11207,6 +11223,12 @@ if(document.readyState==='loading'){
       <button class="modal-close" onclick="closeM('mImportSheet')">✕</button>
     </div>
     <div style="padding:16px 18px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--purple);border-radius:8px;">
+        <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">📦 นำเข้าสู่ Dataset:</span>
+        <select id="importDsSelect" style="flex:1;background:var(--bg-secondary);border:1px solid var(--purple);color:var(--text-primary);border-radius:6px;font-size:12px;padding:4px 8px;height:28px;cursor:pointer;">
+          <option value="default">Default</option>
+        </select>
+      </div>
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px 13px;line-height:1.7;">
         <b style="color:var(--teal);">Header ที่รองรับ:</b><br>
         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">Day, Session, Asset, Side, EntryTime, SetupDuration, TimeInPos, Mode, Code, TF, SetupClass, Candle, Zone, MitZone, Confirm, Entry, TP, SL, Risk, PnL($), MaxRR, Note, ImageLink</span><br>
