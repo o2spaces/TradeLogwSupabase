@@ -10185,7 +10185,7 @@ function dtConfirmClearAll(){
   modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:28px 28px 24px;max-width:400px;width:92%;box-shadow:0 16px 48px rgba(0,0,0,.9);">'
     +'<div style="font-size:36px;text-align:center;margin-bottom:10px;">⚠️</div>'
     +'<div style="font-size:15px;font-weight:700;color:var(--red);text-align:center;margin-bottom:8px;">ลบ Data ทั้งหมด?</div>'
-    +'<div style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:6px;line-height:1.7;">ข้อมูล Trade <strong style="color:var(--text-primary);">ทั้งหมด</strong> ใน Data Mode จะถูกลบถาวร<br>รวมถึงใน <strong style="color:var(--text-primary);">Google Sheet (DataTrades)</strong> ด้วย<br><span style="color:var(--red);">⚠ ไม่สามารถกู้คืนได้</span></div>'
+    +'<div style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:6px;line-height:1.7;">ข้อมูล Trade ทั้งหมดใน Dataset <strong style="color:var(--purple);">'+(window.DS && DS.current ? dsGetName(DS.current) : 'Default')+'</strong><br>จะถูกลบถาวรออกจาก Supabase<br><span style="color:var(--red);">⚠ ไม่สามารถกู้คืนได้</span></div>'
     +'<div style="margin:14px 0 6px;text-align:center;font-size:11px;color:var(--text-muted);">พิมพ์ <strong style="color:var(--text-primary);">ลบทั้งหมด</strong> เพื่อยืนยัน</div>'
     +'<input id="dtClearInput" type="text" placeholder="พิมพ์ที่นี่..." autocomplete="off" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;font-size:13px;padding:8px 12px;font-family:var(--font-main);text-align:center;outline:none;box-sizing:border-box;transition:border-color .15s;">'
     +'<div style="display:flex;gap:10px;justify-content:center;margin-top:16px;">'
@@ -10231,12 +10231,27 @@ function dtConfirmClearAll(){
   });
   modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
 }
-function dtClearAllFromSheet(trades){
+async function dtClearAllFromSheet(trades){
   if(!_supabase){ lsRem('dt_data_cleared'); return; }
-  var cnt = trades ? trades.length : 0;
-  sendSheet('clearAllDataTrades', {portfolio:S.currentPortfolio});
-  lsRem('dt_data_cleared');
-  showToast('✅ ลบออกจาก Supabase เสร็จ ('+cnt+' rows)','success');
+  var uid = _authSession && _authSession._sbUserId;
+  if(!uid){ lsRem('dt_data_cleared'); return; }
+  var dsId = (window.DS && DS.current) ? DS.current : 'default';
+  try{
+    // ลบเฉพาะ dataset ที่เปิดอยู่เท่านั้น
+    var q = _supabase.from('data_trades').update({ is_deleted: true }).eq('user_id', uid);
+    if(dsId === 'default'){
+      q = q.or('dataset_id.eq.default,dataset_id.is.null');
+    } else {
+      q = q.eq('dataset_id', dsId);
+    }
+    var res = await q;
+    if(res.error){ showToast('❌ ลบไม่สำเร็จ: '+res.error.message,'error'); return; }
+    var cnt = trades ? trades.length : 0;
+    lsRem('dt_data_cleared');
+    showToast('✅ ลบ Data ใน Dataset "'+(window.DS ? dsGetName(dsId) : dsId)+'" แล้ว ('+cnt+' rows)','success');
+  }catch(e){
+    showToast('❌ Error: '+e.message,'error');
+  }
 }
 
 function _dtClearSheetFallback(cnt, safetyTimer, onSuccess){
