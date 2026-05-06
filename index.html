@@ -2493,7 +2493,23 @@ async function syncFromSheet(onDone){
         // dropdown options
         if(row.key.startsWith('dropdown_')){
           var selId = row.key.replace('dropdown_','');
-          try{ lsSet('tj_drop_'+selId, JSON.stringify(v.split(',').filter(Boolean))); }catch(e){}
+          try{
+            var dropOpts = v.split(',').filter(Boolean);
+            lsSet('tj_drop_'+selId, JSON.stringify(dropOpts));
+            // Apply to DOM immediately if element exists
+            var domSel = document.getElementById(selId);
+            if(domSel && dropOpts.length){
+              var curVal = domSel.value;
+              // keep first blank option, replace rest
+              while(domSel.options.length > 1) domSel.remove(1);
+              dropOpts.forEach(function(opt){
+                var o = document.createElement('option');
+                o.value = opt; o.textContent = opt;
+                domSel.appendChild(o);
+              });
+              domSel.value = curVal;
+            }
+          }catch(e){}
         }
         // custom sessions
         if(row.key === 'custom_sessions'){
@@ -2525,8 +2541,19 @@ async function syncFromSheet(onDone){
         // fund log
         if(row.key === 'fund_log'){
           try{
-            var flog = JSON.parse(v); if(Array.isArray(flog)) lsSet('tj_fund_log', v);
+            var flog = JSON.parse(v); if(Array.isArray(flog)){
+              lsSet('tj_fund_log', v);
+              if(typeof renderFundLog === 'function') setTimeout(renderFundLog, 200);
+            }
           }catch(e){}
+        }
+        // fees config
+        if(row.key && row.key.startsWith('fees_config_')){
+          try{ lsSet(row.key, v); }catch(e){}
+        }
+        // current portfolio
+        if(row.key === 'current_portfolio' && v){
+          lsSet('tj_curport', v);
         }
       });
     }
@@ -2779,7 +2806,8 @@ function persistPort(){
 function switchPortfolio(id){
   if(!S.portfolios[id]) return;
   S.currentPortfolio=id;
-  if(_supabase){
+  lsSet('tj_curport', id);
+  if(_supabase){ sendSheet('saveSettings',{key:'current_portfolio', value:id});
     // มี Sheet → clear แล้ว sync ใหม่จาก Sheet เสมอ (ไม่อ่าน localStorage ที่อาจว่าง)
     S.trades={}; S.sessions={};
     syncFromSheet(null);
@@ -3503,8 +3531,17 @@ function saveDropOptions(selectId){
   }
   // Sync asset list to Sheet when oAsset or dtAsset changes
   if(selectId==='oAsset'||selectId==='dtAsset') saveAssetsToSheet();
-  // Log dropdown change to Sheet
-  else if(_supabase) sendSheet('saveSettings',{key:'dropdown_'+selectId,value:opts.join(',')});
+  // Sync ALL affected dropdown keys to Supabase settings
+  if(_supabase){
+    var _syncKeys = [selectId];
+    if(formToFilter[selectId]) _syncKeys.push(formToFilter[selectId]);
+    if(classSync[selectId]) _syncKeys.push(classSync[selectId]);
+    if(orderDataSync[selectId]) _syncKeys.push(orderDataSync[selectId]);
+    if(selectId==='dtSetupClass'||selectId==='oSetupClass') _syncKeys.push('dtfClass');
+    _syncKeys.forEach(function(k){
+      sendSheet('saveSettings',{key:'dropdown_'+k, value:opts.join(',')});
+    });
+  }
 }
 function pad(n){return n<10?'0'+n:''+n;}
 function dk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
@@ -5437,7 +5474,18 @@ function setConn(ok){
 function sendSheet(action, data){
   if(!_supabase) return; // offline fallback: data stays in S (memory)
   _sbDispatch(action, Object.assign({ portfolio: S.currentPortfolio }, data||{}))
-    .catch(function(err){ console.warn('[sendSheet→Supabase]', action, err.message); });
+    .then(function(){
+      // Update sync timestamp
+      var now = new Date();
+      var hhmm = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+      var syncEl = document.getElementById('_syncStatus');
+      if(syncEl) syncEl.textContent = '✓ sync '+hhmm;
+    })
+    .catch(function(err){ 
+      console.warn('[sendSheet→Supabase]', action, err.message);
+      var syncEl = document.getElementById('_syncStatus');
+      if(syncEl) syncEl.textContent = '⚠ sync failed';
+    });
 }
 
 // ── RLS hint toast (403 policy error) ────────────────────────
@@ -6487,7 +6535,7 @@ function initStratRow(){
     // ครั้งแรก — อ่าน HTML default แล้ว save ทันที ผูกกับ user
     var names=[];
     row.querySelectorAll('.strat-wrap .tag').forEach(function(el){names.push(el.textContent.trim());});
-    if(names.length) lsSet('tj_strat_list',JSON.stringify(names));
+    if(names.length){ lsSet('tj_strat_list',JSON.stringify(names)); if(_supabase) sendSheet('saveSettings',{key:'strat_list',value:JSON.stringify(names)}); }
     return; // ใช้ HTML ที่มีอยู่แล้ว
   }
   row.innerHTML='';
