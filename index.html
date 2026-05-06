@@ -1730,7 +1730,11 @@ function _uuid(){
 async function _fetchProfile(userId){
   if(!_supabase) return null;
   try{
-    var res = await _supabase.from('profiles').select('role,display_name,username,email').eq('id', userId).maybeSingle();
+    // ใช้ RPC (security definer) bypass RLS
+    var rpc = await _supabase.rpc('get_my_profile');
+    if(!rpc.error && rpc.data) return rpc.data;
+    // fallback direct query
+    var res = await _supabase.from('profiles').select('role,display_name,username,email,login_count').eq('id', userId).maybeSingle();
     if(res.error){ console.warn('[_fetchProfile]', res.error.message); return null; }
     return res.data || null;
   }catch(e){ console.warn('[_fetchProfile]', e.message); return null; }
