@@ -9634,9 +9634,11 @@ function dtSetViewMode(mode){
   if(inc) inc.checked=(mode==='combined');
 }
 
-function openPortSelectorModal(){
+async function openPortSelectorModal(){
   var existing=document.getElementById('_portSelectModal');
   if(existing){existing.remove();return;}
+  // โหลด datasets ก่อนถ้ายังไม่มี
+  if(typeof dsLoad === 'function' && (!window.DS || !DS.list || !DS.list.length)) await dsLoad();
 
   // Overlay
   var overlay=document.createElement('div');
@@ -9692,7 +9694,7 @@ function openPortSelectorModal(){
   }
 
   // ── Dataset section ──────────────────────────────────────────
-  if(window.DS && DS.list && DS.list.length > 1){
+  if(window.DS && DS.list && DS.list.length >= 1){
     var dsSect=document.createElement('div');
     dsSect.style.marginBottom='14px';
     var dsHdr=document.createElement('div');
