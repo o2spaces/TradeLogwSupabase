@@ -7996,7 +7996,7 @@ function openTradeTemplates(){
   foot.style.cssText='padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;';
   var saveBtn=document.createElement('button');
   saveBtn.className='btn-primary'; saveBtn.style.cssText='font-size:12px;flex:1;';
-  saveBtn.textContent='💾 บันทึก Setup ปัจจุบันเป็น Template';
+  saveBtn.textContent='➕ สร้าง Template ใหม่';
   saveBtn.onclick=function(){ _saveCurrentAsTemplate(body); };
   foot.appendChild(saveBtn); box.appendChild(foot);
   overlay.appendChild(box); document.body.appendChild(overlay);
@@ -8014,12 +8014,23 @@ function _renderTemplates(body){
     row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bg-input);';
     var info=document.createElement('div');
     info.style.cssText='flex:1;font-size:12px;';
-    info.innerHTML='<b>'+escHtml(t.name)+'</b><br><span style="color:var(--text-muted);font-size:11px;">'
-      +escHtml(t.asset||'-')+' | '+escHtml(t.mode||'-')+' | '+escHtml(t.setupClass||'-')
-      +' | TF:'+escHtml(t.tf||'-')+'</span>';
+    var details=[];
+    if(t.asset) details.push(t.asset);
+    if(t.mode) details.push(t.mode);
+    if(t.setupClass) details.push(t.setupClass);
+    if(t.tf) details.push('TF:'+t.tf);
+    if(t.code) details.push(t.code);
+    if(t.zone) details.push(t.zone);
+    if(t.trend) details.push(t.trend);
+    info.innerHTML='<b style="font-size:13px;">'+escHtml(t.name)+'</b><br><span style="color:var(--text-muted);font-size:10px;">'+escHtml(details.join(' · ')||'—')+'</span>';
     var useBtn=document.createElement('button');
     useBtn.textContent='▶ ใช้'; useBtn.style.cssText='background:none;border:1px solid var(--purple);color:var(--purple);border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer;';
     useBtn.onclick=(function(tmpl){ return function(){ _applyTemplate(tmpl); document.getElementById('_tmplModal').remove(); }; })(t);
+    var editBtn=document.createElement('button');
+    editBtn.textContent='✏️'; editBtn.title='แก้ไข'; editBtn.style.cssText='background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:6px;font-size:11px;padding:3px 7px;cursor:pointer;';
+    editBtn.onclick=(function(tmpl,idx){ return function(){
+      _openTemplateForm(tmpl, document.getElementById('_tmplBody'), idx);
+    }; })(t,i);
     var delBtn=document.createElement('button');
     delBtn.textContent='×'; delBtn.style.cssText='background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;font-size:13px;padding:2px 7px;cursor:pointer;';
     delBtn.onclick=(function(idx){ return function(){
@@ -8028,31 +8039,102 @@ function _renderTemplates(body){
       if(_supabase) sendSheet('saveSettings',{key:'trade_templates',value:JSON.stringify(_tradeTemplates)});
       _renderTemplates(document.getElementById('_tmplBody'));
     }; })(i);
-    row.appendChild(info); row.appendChild(useBtn); row.appendChild(delBtn);
+    row.appendChild(info); row.appendChild(useBtn); row.appendChild(editBtn); row.appendChild(delBtn);
     body.appendChild(row);
   });
 }
 
 function _saveCurrentAsTemplate(body){
-  var name = prompt('ชื่อ Template:');
-  if(!name||!name.trim()) return;
-  var t = {
-    name: name.trim(),
-    asset: (document.getElementById('oAsset')||{}).value||'',
-    mode: (document.getElementById('oMode')||{}).value||'',
-    setupClass: (document.getElementById('oSetupClass')||{}).value||'',
-    tf: (document.getElementById('oTf')||{}).value||'',
-    trend: (document.getElementById('oTrend')||{}).value||'',
-    confirm: (document.getElementById('oConfirm')||{}).value||'',
-    code: (document.getElementById('oCode')||{}).value||'',
-    zone: (document.getElementById('oZone')||{}).value||'',
-    candle: (document.getElementById('oCandle')||{}).value||'',
+  // Open inline form instead of prompt
+  _openTemplateForm(null, body);
+}
+
+function _openTemplateForm(existing, body, idx){
+  // Remove any existing form
+  var oldF=document.getElementById('_tmplForm'); if(oldF) oldF.remove();
+  // Get current sidebar values as defaults when creating new
+  function gv(id){ return (document.getElementById(id)||{}).value||''; }
+  var t = existing || {
+    name:'', asset:gv('oAsset'), mode:gv('oMode'), setupClass:gv('oSetupClass'),
+    tf:gv('oTf'), trend:gv('oTrend'), confirm:gv('oConfirm'),
+    code:gv('oCode'), zone:gv('oZone'), candle:gv('oCandle')
   };
-  _tradeTemplates.push(t);
-  lsSet('tj_templates',JSON.stringify(_tradeTemplates));
-  if(_supabase) sendSheet('saveSettings',{key:'trade_templates',value:JSON.stringify(_tradeTemplates)});
-  _renderTemplates(body);
-  showToast('✅ บันทึก Template "'+t.name+'" แล้ว','success');
+  // Build form inside body
+  var form=document.createElement('div');
+  form.id='_tmplForm';
+  form.style.cssText='background:var(--bg-secondary);border:1px solid var(--border-hover);border-radius:10px;padding:14px 16px;margin-bottom:10px;';
+  var title=existing?'✏️ แก้ไข Template':'➕ Template ใหม่';
+  // Helper: get options from an existing select
+  function getOpts(id){
+    var sel=document.getElementById(id);
+    if(!sel) return [];
+    return Array.from(sel.options).map(function(o){ return {v:o.value,l:o.text}; });
+  }
+  // Field definitions
+  var fields=[
+    {key:'name',  label:'ชื่อ Template', type:'text', placeholder:'เช่น ICT Breakout London'},
+    {key:'asset', label:'Asset',         type:'select', srcId:'oAsset'},
+    {key:'mode',  label:'Mode',          type:'select', srcId:'oMode'},
+    {key:'setupClass',label:'Setup Class',type:'select',srcId:'oSetupClass'},
+    {key:'tf',    label:'Timeframe',     type:'text',   placeholder:'เช่น M5, H1'},
+    {key:'trend', label:'Trend/Zone',    type:'text',   placeholder:'เช่น Bullish'},
+    {key:'confirm',label:'Confirm',      type:'select', srcId:'oConfirm'},
+    {key:'code',  label:'Code',          type:'text',   placeholder:'เช่น A+'},
+    {key:'zone',  label:'Zone',          type:'text',   placeholder:'เช่น OB'},
+    {key:'candle',label:'Candle Model',  type:'select', srcId:'oCandle'},
+  ];
+  var fHtml='<div style="font-size:13px;font-weight:600;margin-bottom:10px;">'+title+'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  fields.forEach(function(f){
+    var inputHtml;
+    if(f.type==='select'){
+      var opts=getOpts(f.srcId);
+      inputHtml='<select id="_tf_'+f.key+'" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text-primary);font-family:var(--font-main);">'
+        +'<option value="">— เลือก —</option>'
+        +opts.map(function(o){ return '<option value="'+o.v+'"'+(t[f.key]===o.v?' selected':'')+'>'+o.l+'</option>'; }).join('')
+        +'</select>';
+    } else {
+      inputHtml='<input id="_tf_'+f.key+'" type="text" placeholder="'+(f.placeholder||'')+'" value="'+(t[f.key]||'')+'" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text-primary);font-family:var(--font-main);">';
+    }
+    // Name spans full width
+    var span=f.key==='name'?'grid-column:1/-1':'';
+    fHtml+='<div style="'+span+'">'
+      +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">'+f.label+'</div>'
+      +inputHtml+'</div>';
+  });
+  fHtml+='</div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;">'
+    +'<button id="_tfSaveBtn" class="btn-primary" style="flex:1;font-size:12px;">💾 บันทึก</button>'
+    +'<button id="_tfCancelBtn" style="background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;">ยกเลิก</button>'
+    +'</div>';
+  form.innerHTML=fHtml;
+  // Insert at top of body
+  body.insertBefore(form, body.firstChild);
+  // Focus name
+  setTimeout(function(){ var n=document.getElementById('_tf_name'); if(n) n.focus(); }, 50);
+  // Cancel
+  document.getElementById('_tfCancelBtn').onclick=function(){ form.remove(); };
+  // Save
+  document.getElementById('_tfSaveBtn').onclick=function(){
+    var name=(document.getElementById('_tf_name')||{}).value||'';
+    if(!name.trim()){ showToast('❌ กรุณาใส่ชื่อ Template','error'); return; }
+    function fv(k){ return (document.getElementById('_tf_'+k)||{}).value||''; }
+    var newT={
+      name:name.trim(), asset:fv('asset'), mode:fv('mode'), setupClass:fv('setupClass'),
+      tf:fv('tf'), trend:fv('trend'), confirm:fv('confirm'),
+      code:fv('code'), zone:fv('zone'), candle:fv('candle')
+    };
+    if(idx!==undefined && idx>=0){
+      _tradeTemplates[idx]=newT;
+    } else {
+      _tradeTemplates.push(newT);
+    }
+    lsSet('tj_templates',JSON.stringify(_tradeTemplates));
+    if(_supabase) sendSheet('saveSettings',{key:'trade_templates',value:JSON.stringify(_tradeTemplates)});
+    form.remove();
+    _renderTemplates(body);
+    showToast('✅ บันทึก Template "'+newT.name+'" แล้ว','success');
+  };
 }
 
 function _applyTemplate(t){
@@ -8211,13 +8293,19 @@ function _renderDashboardHTML(el, trades, ports){
     {label:'Current Streak',val:(streak.type==='win'?'🔥':'❄️')+' '+Math.abs(streak.count)+(streak.type==='win'?' Win':' Loss'),color:streak.type==='win'?'var(--green)':'var(--red)'},
   ];
 
-  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;">'
-    +kpis.map(function(k){
-      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">'
-        +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">'+escHtml(k.label)+'</div>'
-        +'<div style="font-size:20px;font-weight:700;color:'+k.color+';">'+escHtml(String(k.val))+'</div>'
+  // KPI row 1: 7 equal cards
+  var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:10px;">'
+    +kpis.slice(0,7).map(function(k){
+      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;min-height:72px;">'
+        +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escHtml(k.label)+'</div>'
+        +'<div style="font-size:18px;font-weight:700;font-family:var(--font-mono);color:'+k.color+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escHtml(String(k.val))+'</div>'
         +'</div>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'
+  // KPI row 2: Current Streak full-width
+  +'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:16px;margin-bottom:20px;">'
+  +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">'+escHtml(kpis[7].label)+'</div>'
+  +'<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:'+kpis[7].color+';white-space:nowrap;">'+escHtml(String(kpis[7].val))+'</div>'
+  +'</div>';
 
   // Best/Worst Setup
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">';
@@ -8289,12 +8377,12 @@ function _renderSetupTable(title, groups, type){
   return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;">'
     +'<div style="font-size:13px;font-weight:600;margin-bottom:10px;">'+escHtml(title)+'</div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
-    +'<tr style="color:var(--text-muted);"><th style="text-align:left;padding:3px 0;">Setup</th><th>WR%</th><th>PnL</th><th>N</th></tr>'
+    +'<tr style="color:var(--text-muted);"><th style="text-align:left;padding:3px 0;width:40%;">Setup</th><th style="text-align:center;width:15%;">WR%</th><th style="text-align:right;padding-right:4px;width:30%;">PnL</th><th style="text-align:center;width:15%;">N</th></tr>'
     +arr.map(function(r){
       return '<tr style="border-top:1px solid var(--border);">'
-        +'<td style="padding:4px 0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escHtml(r.name)+'</td>'
+        +'<td style="padding:5px 0;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">'+escHtml(r.name)+'</td>'
         +'<td style="text-align:center;color:'+(r.wr>=50?'var(--green)':'var(--red)')+';">'+r.wr+'%</td>'
-        +'<td style="text-align:right;color:'+(r.pnl>=0?'var(--green)':'var(--red)')+';">'+(r.pnl>=0?'+':'')+r.pnl.toFixed(1)+'</td>'
+        +'<td style="text-align:right;padding-right:4px;color:'+(r.pnl>=0?'var(--green)':'var(--red)')+';">'+(r.pnl>=0?'+':'')+r.pnl.toFixed(1)+'</td>'
         +'<td style="text-align:center;color:var(--text-muted);">'+r.count+'</td>'
         +'</tr>';
     }).join('')+'</table></div>';
