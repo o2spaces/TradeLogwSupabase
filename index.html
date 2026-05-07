@@ -8293,19 +8293,16 @@ function _renderDashboardHTML(el, trades, ports){
     {label:'Current Streak',val:(streak.type==='win'?'🔥':'❄️')+' '+Math.abs(streak.count)+(streak.type==='win'?' Win':' Loss'),color:streak.type==='win'?'var(--green)':'var(--red)'},
   ];
 
-  // KPI row 1: 7 equal cards
-  var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:10px;">'
-    +kpis.slice(0,7).map(function(k){
-      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;min-height:72px;">'
-        +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escHtml(k.label)+'</div>'
-        +'<div style="font-size:18px;font-weight:700;font-family:var(--font-mono);color:'+k.color+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escHtml(String(k.val))+'</div>'
-        +'</div>';
-    }).join('')+'</div>'
-  // KPI row 2: Current Streak full-width
-  +'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:16px;margin-bottom:20px;">'
-  +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">'+escHtml(kpis[7].label)+'</div>'
-  +'<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:'+kpis[7].color+';white-space:nowrap;">'+escHtml(String(kpis[7].val))+'</div>'
-  +'</div>';
+  function _kpiCard(k){
+    return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;">'
+      +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">'+escHtml(k.label)+'</div>'
+      +'<div style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:'+k.color+';">'+escHtml(String(k.val))+'</div>'
+      +'</div>';
+  }
+  var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;">'
+    +kpis.slice(0,4).map(_kpiCard).join('')+'</div>'
+  +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">'
+    +kpis.slice(4,8).map(_kpiCard).join('')+'</div>';
 
   // Best/Worst Setup
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">';
