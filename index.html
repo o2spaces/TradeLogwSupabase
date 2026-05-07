@@ -660,9 +660,6 @@ var _supabase = null;
           <div class="drop-item" onclick="backupExport();closeMenu()">📦 Export Full Backup (JSON)</div>
           <div class="drop-item" onclick="backupImport();closeMenu()">📥 Import Full Backup</div>
           <div style="height:1px;background:var(--border);margin:3px 0;"></div>
-          <div class="drop-cat">Templates</div>
-          <div class="drop-item" onclick="openTradeTemplates();closeMenu()">📋 Trade Templates</div>
-          <div style="height:1px;background:var(--border);margin:3px 0;"></div>
           <div class="drop-cat">ทั่วไป</div>
           <div class="drop-item" onclick="openDrawdownSettings();closeMenu()">🔔 Drawdown Alert</div>
           <div class="drop-item" onclick="_showShortcutsHelp();closeMenu()">⌨️ Keyboard Shortcuts (?)</div>
@@ -2537,6 +2534,8 @@ async function syncFromSheet(onDone){
         }
         // strat list
         if(row.key === 'trade_templates') { _loadTemplatesFromSettings(v); }
+        if(row.key === 'entry_defaults_journal'){ try{ lsSet('tj_entry_def_journal',v); }catch(e){} }
+        if(row.key === 'entry_defaults_data'){ try{ lsSet('tj_entry_def_data',v); }catch(e){} }
         if(row.key === 'dd_alert_threshold'){ _ddAlert.threshold=parseFloat(v)||0; lsSet('tj_dd_alert',v); }
         if(row.key === 'strat_list'){
           try{
@@ -4111,8 +4110,18 @@ function openDay(dt){
   S._editIdx=-1;
   var addBtn=document.querySelector('#orderForm .btn-primary');
   if(addBtn){addBtn.textContent='✓ Add Trade';addBtn.onclick=function(){addTrade();};}
-  // reset new order form fields
+  // reset new order form fields — then apply defaults
   ['oMaxRR','oFiboLevel','oSetupClass','oCandle','oCode','oMode','oTF','oTrend','oZone','oConfirm'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  _applyEntryDefaults('journal');
+  setTimeout(function(){
+    var _mhdr = document.querySelector('#mDay .modal-header');
+    if(_mhdr && _mhdr.parentNode){ 
+      var existing=document.getElementById('_defBar_journal');
+      if(existing) existing.remove();
+      var bar=_buildDefaultBar('journal');
+      _mhdr.parentNode.insertBefore(bar, _mhdr.nextSibling);
+    }
+  }, 100);
 
   document.querySelectorAll('#oSessionTagRow .tag').forEach(function(el){el.classList.remove('active');});
   document.getElementById('oEmoSlider').value=5;updateOrderEmo(5);
@@ -8153,6 +8162,87 @@ function _loadTemplatesFromSettings(v){
 }
 
 // ── KEYBOARD SHORTCUTS ───────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════
+//  ENTRY DEFAULT VALUES — จำค่าเริ่มต้นสำหรับ entry form
+// ═══════════════════════════════════════════════════════════════
+var _ENTRY_DEFAULT_FIELDS = {
+  journal: ['oAsset','oSide','oMode','oSetupClass','oTF','oCode','oTrend','oZone','oConfirm','oCandle','oFiboLevel'],
+  data:    ['dtAssetSel','dtMode','dtSetupClass','dtTF','dtCode','dtTrend','dtZone','dtConfirm','dtCandle','dtFiboLevel','dtResult']
+};
+
+function _loadEntryDefaults(type){
+  try{ return JSON.parse(lsGet('tj_entry_def_'+type)||'{}'); }catch(e){ return {}; }
+}
+function _saveEntryDefaults(type, vals){
+  lsSet('tj_entry_def_'+type, JSON.stringify(vals));
+  if(_supabase) sendSheet('saveSettings',{key:'entry_defaults_'+type, value:JSON.stringify(vals)});
+}
+function _applyEntryDefaults(type){
+  var defs = _loadEntryDefaults(type);
+  _ENTRY_DEFAULT_FIELDS[type].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el || !defs[id]) return;
+    el.value = defs[id];
+  });
+  // Handle Side specially
+  if(type==='journal' && defs.oSide){
+    var sideEl = document.getElementById('oSide'); if(sideEl) sideEl.value = defs.oSide;
+  }
+  if(type==='data' && defs.dtSide){
+    if(typeof dtSetSide==='function') dtSetSide(defs.dtSide);
+  }
+}
+function _captureEntryDefaults(type){
+  var vals = {};
+  _ENTRY_DEFAULT_FIELDS[type].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.value) vals[id] = el.value;
+  });
+  if(type==='journal'){
+    var sideEl = document.getElementById('oSide'); if(sideEl&&sideEl.value) vals.oSide = sideEl.value;
+  }
+  if(type==='data' && window.DT && DT.side) vals.dtSide = DT.side;
+  _saveEntryDefaults(type, vals);
+  showToast('✅ จำค่าเริ่มต้นแล้ว','success');
+}
+function _resetEntryDefaults(type){
+  _saveEntryDefaults(type, {});
+  showToast('🔄 รีเซ็ตค่าเริ่มต้นแล้ว','success');
+}
+function _buildDefaultBar(type){
+  var bar = document.createElement('div');
+  bar.id = '_defBar_'+type;
+  bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;';
+  var label = document.createElement('span');
+  label.id = '_defBarLabel_'+type;
+  label.style.cssText = 'color:var(--text-muted);flex:1;';
+  var defs = _loadEntryDefaults(type);
+  var count = Object.keys(defs).length;
+  label.textContent = count ? '⭐ Default: '+count+' fields' : '⭐ ยังไม่มีค่า Default';
+  var saveBtn = document.createElement('button');
+  saveBtn.textContent = '💾 จำค่า';
+  saveBtn.title = 'บันทึกค่าปัจจุบันเป็น Default';
+  saveBtn.style.cssText = 'background:none;border:1px solid var(--purple);color:var(--purple);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:11px;white-space:nowrap;';
+  saveBtn.onclick = function(){
+    _captureEntryDefaults(type);
+    var lbl=document.getElementById('_defBarLabel_'+type);
+    var d=_loadEntryDefaults(type);
+    if(lbl) lbl.textContent='⭐ Default: '+Object.keys(d).length+' fields';
+  };
+  var resetBtn = document.createElement('button');
+  resetBtn.textContent = '🔄';
+  resetBtn.title = 'รีเซ็ต Default';
+  resetBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:2px 7px;cursor:pointer;font-size:11px;';
+  resetBtn.onclick = function(){
+    _resetEntryDefaults(type);
+    var lbl=document.getElementById('_defBarLabel_'+type);
+    if(lbl) lbl.textContent='⭐ ยังไม่มีค่า Default';
+  };
+  bar.appendChild(label); bar.appendChild(saveBtn); bar.appendChild(resetBtn);
+  return bar;
+}
+
 document.addEventListener('keydown',function(e){
   if(!_authSession) return;
   var tag=(e.target||{}).tagName||'';
@@ -8245,24 +8335,81 @@ function openDrawdownSettings(){
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────────
+// track selected portfolios for dashboard
+if(!window._dashSelectedPorts) window._dashSelectedPorts = null; // null = all
+
 async function renderDashboard(){
   var el=document.getElementById('dashContent'); if(!el) return;
   el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">⏳ กำลังโหลด...</div>';
   var uid=_authSession&&_authSession._sbUserId;
   if(!_supabase||!uid){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">❌ กรุณาเชื่อมต่อ Supabase</div>'; return; }
-  // Fetch all trades
-  var [t1,t2,t3]=await Promise.all([
+  // Fetch Journal trades + portfolios only
+  var [t1,t3]=await Promise.all([
     _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
-    _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
     _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false)
   ]);
-  var trades=(t1.data||[]).concat((t2.data||[]).map(function(t){return Object.assign({},t,{portfolio:t.dataset_id||'default'});}));
+  var allTrades=t1.data||[];
   var ports=t3.data||[];
-  if(!trades.length){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในระบบ</div>'; return; }
-  _renderDashboardHTML(el, trades, ports);
+  // filter by selected portfolios
+  var selectedPorts = window._dashSelectedPorts;
+  var trades = selectedPorts && selectedPorts.length
+    ? allTrades.filter(function(t){ return selectedPorts.indexOf(t.portfolio)>=0; })
+    : allTrades;
+  if(!trades.length){ 
+    el.innerHTML='<div style="padding:16px;">'
+      +_renderPortSelector(ports, allTrades)
+      +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในพอร์ตที่เลือก</div></div>'; 
+    return; 
+  }
+  _renderDashboardHTML(el, trades, ports, allTrades);
 }
 
-function _renderDashboardHTML(el, trades, ports){
+function _renderPortSelector(ports, allTrades){
+  var selected = window._dashSelectedPorts;
+  var allIds = ports.map(function(p){return p.id;});
+  var countMap = {};
+  (allTrades||[]).forEach(function(t){ countMap[t.portfolio]=(countMap[t.portfolio]||0)+1; });
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;';
+  var lbl=document.createElement('span');
+  lbl.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap;';
+  lbl.textContent='📁 พอร์ต:';
+  wrapper.appendChild(lbl);
+  var allActive = !selected || selected.length===allIds.length;
+  var allBtn=document.createElement('button');
+  allBtn.textContent='ทั้งหมด';
+  allBtn.style.cssText='background:'+(allActive?'var(--purple)':'none')+';border:1px solid var(--purple);color:'+(allActive?'#fff':'var(--purple)')+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;';
+  allBtn.onclick=function(){ _dashSelectAll(); };
+  wrapper.appendChild(allBtn);
+  ports.forEach(function(p){
+    var active = !selected || selected.indexOf(p.id)>=0;
+    var cnt = countMap[p.id]||0;
+    var btn=document.createElement('button');
+    btn.textContent='📂 '+p.name+' ('+cnt+')';
+    btn.style.cssText='background:'+(active?'var(--accent-dim)':'none')+';border:1px solid '+(active?'var(--accent)':'var(--border)')+';color:'+(active?'var(--accent)':'var(--text-muted)')+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;';
+    btn.onclick=(function(pid){ return function(){ _dashTogglePort(pid); }; })(p.id);
+    wrapper.appendChild(btn);
+  });
+  return wrapper.outerHTML;
+}
+
+function _dashSelectAll(){
+  window._dashSelectedPorts = null;
+  renderDashboard();
+}
+
+function _dashTogglePort(id){
+  var ports = window._allDashPorts || [];
+  var allIds = ports.map(function(p){return p.id;});
+  var cur = window._dashSelectedPorts ? window._dashSelectedPorts.slice() : allIds.slice();
+  var idx = cur.indexOf(id);
+  if(idx>=0){ cur.splice(idx,1); } else { cur.push(id); }
+  window._dashSelectedPorts = cur.length===allIds.length ? null : cur;
+  renderDashboard();
+}
+
+function _renderDashboardHTML(el, trades, ports, allTrades){
+  window._allDashPorts = ports;
   var wins=trades.filter(function(t){return (t.result||'').toLowerCase()==='win';});
   var losses=trades.filter(function(t){return (t.result||'').toLowerCase()==='loss';});
   var totalPnl=trades.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0);
@@ -8299,7 +8446,8 @@ function _renderDashboardHTML(el, trades, ports){
       +'<div style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:'+k.color+';">'+escHtml(String(k.val))+'</div>'
       +'</div>';
   }
-  var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;">'
+  var html=_renderPortSelector(ports, allTrades||trades);
+  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;">'
     +kpis.slice(0,4).map(_kpiCard).join('')+'</div>'
   +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">'
     +kpis.slice(4,8).map(_kpiCard).join('')+'</div>';
@@ -9317,6 +9465,17 @@ function dtOpenAdd(){
    'dtZone','dtConfirm','dtContractSize','dtFiboLevel'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.selectedIndex=0;
   });
+  // Apply default values
+  _applyEntryDefaults('data');
+  setTimeout(function(){
+    var _mhdr2 = document.querySelector('#mDataTrade .modal-header');
+    if(_mhdr2 && _mhdr2.parentNode){
+      var existing2=document.getElementById('_defBar_data');
+      if(existing2) existing2.remove();
+      var bar2=_buildDefaultBar('data');
+      _mhdr2.parentNode.insertBefore(bar2, _mhdr2.nextSibling);
+    }
+  }, 100);
   // Sync asset select
   loadDropOptions();
   // Set today's date
