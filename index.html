@@ -656,7 +656,16 @@ var _supabase = null;
           <div class="drop-item" onclick="openAI();closeMenu()">🤖 Open AI Coach</div>
           <div class="drop-item" onclick="openAPI();closeMenu()">🔑 Change AI Key</div>
           <div style="height:1px;background:var(--border);margin:3px 0;"></div>
+          <div class="drop-cat">Backup &amp; Sync</div>
+          <div class="drop-item" onclick="backupExport();closeMenu()">📦 Export Full Backup (JSON)</div>
+          <div class="drop-item" onclick="backupImport();closeMenu()">📥 Import Full Backup</div>
+          <div style="height:1px;background:var(--border);margin:3px 0;"></div>
+          <div class="drop-cat">Templates</div>
+          <div class="drop-item" onclick="openTradeTemplates();closeMenu()">📋 Trade Templates</div>
+          <div style="height:1px;background:var(--border);margin:3px 0;"></div>
           <div class="drop-cat">ทั่วไป</div>
+          <div class="drop-item" onclick="openDrawdownSettings();closeMenu()">🔔 Drawdown Alert</div>
+          <div class="drop-item" onclick="_showShortcutsHelp();closeMenu()">⌨️ Keyboard Shortcuts (?)</div>
           <div class="drop-item" onclick="openShareDashboard();closeMenu()">🔗 Share Dashboard</div>
           <div class="drop-item" onclick="closeMenu();setTimeout(openFeesConfig,80)">💰 Fees &amp; Commission</div>
           <div class="drop-item" id="menuChangePass" onclick="openChangePassword();closeMenu()" style="display:none;">🔑 เปลี่ยนรหัสผ่าน</div>
@@ -682,6 +691,7 @@ var _supabase = null;
 <div class="sidebar-left" id="sideLeft" style="position:relative;">
   
   <div class="section-label" style="margin-top:18px;">Views</div>
+  <div class="nav-item" id="navDash" onclick="switchView('dashboard')" style="color:var(--teal);">📊 Dashboard</div>
   <div class="nav-item active" id="navDaily" onclick="switchView('daily')">📅 Daily Calendar</div>
   <div class="nav-item" id="navWeekly" onclick="switchView('weekly')">📊 Weekly View</div>
   <div class="nav-item" id="navData" onclick="dtToggleDataPanel()" style="color:var(--purple);">🗃 Data Mode</div>
@@ -708,7 +718,10 @@ var _supabase = null;
 <!-- MAIN -->
 <div class="main">
   <!-- DAILY -->
-  <div id="dailyView">
+  <div id="dashboardView" style="display:none;padding:20px;">
+  <div id="dashContent">กำลังโหลด...</div>
+</div>
+<div id="dailyView">
     <div class="month-nav">
       <div class="month-title" id="monthTitle"></div>
       <div class="month-btns">
@@ -2523,6 +2536,8 @@ async function syncFromSheet(onDone){
           }catch(e){}
         }
         // strat list
+        if(row.key === 'trade_templates') { _loadTemplatesFromSettings(v); }
+        if(row.key === 'dd_alert_threshold'){ _ddAlert.threshold=parseFloat(v)||0; lsSet('tj_dd_alert',v); }
         if(row.key === 'strat_list'){
           try{
             var sl = JSON.parse(v);
@@ -3551,11 +3566,16 @@ function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate
 function switchView(v){
   document.getElementById('dailyView').style.display=v==='daily'?'block':'none';
   document.getElementById('weeklyView').style.display=v==='weekly'?'block':'none';
+  var dashEl = document.getElementById('dashboardView');
+  if(dashEl) dashEl.style.display = v==='dashboard'?'block':'none';
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
   document.getElementById('btnWeekly').className='view-btn'+(v==='weekly'?' active':'');
   document.getElementById('navDaily').className='nav-item'+(v==='daily'?' active':'');
   document.getElementById('navWeekly').className='nav-item'+(v==='weekly'?' active':'');
+  var navDash = document.getElementById('navDash');
+  if(navDash) navDash.className='nav-item'+(v==='dashboard'?' active':'');
   if(v==='weekly'){renderWeekly();drawEQW();}
+  else if(v==='dashboard'){ renderDashboard(); }
   else{drawEQ();}
 }
 
@@ -7840,6 +7860,501 @@ function ndCloseOverlay(){
   document.documentElement.style.overflow='';
   document.body.style.overflow='';
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//  FEATURE PACK: Backup, Dashboard, Templates, Keyboard, Alert, Heatmap
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── EXPORT FULL BACKUP ───────────────────────────────────────────────
+async function backupExport(){
+  showToast('⏳ กำลัง Export...','info');
+  var uid = _authSession && _authSession._sbUserId;
+  var backup = {
+    version: '1.0', exportedAt: new Date().toISOString(),
+    username: _authSession ? _authSession.username : '',
+    trades: [], data_trades: [], sessions: [], journal: [], settings: [],
+    portfolios: [], datasets: []
+  };
+  if(_supabase && uid){
+    try{
+      var r1 = await _supabase.from('trades').select('*').eq('user_id',uid).eq('is_deleted',false);
+      if(r1.data) backup.trades = r1.data;
+      var r2 = await _supabase.from('data_trades').select('*').eq('user_id',uid).eq('is_deleted',false);
+      if(r2.data) backup.data_trades = r2.data;
+      var r3 = await _supabase.from('sessions').select('*').eq('user_id',uid);
+      if(r3.data) backup.sessions = r3.data;
+      var r4 = await _supabase.from('journal').select('*').eq('user_id',uid);
+      if(r4.data) backup.journal = r4.data;
+      var r5 = await _supabase.from('settings').select('*').eq('user_id',uid);
+      if(r5.data) backup.settings = r5.data;
+      var r6 = await _supabase.from('portfolios').select('*').eq('user_id',uid).eq('is_deleted',false);
+      if(r6.data) backup.portfolios = r6.data;
+      var r7 = await _supabase.from('datasets').select('*').eq('user_id',uid).eq('is_deleted',false);
+      if(r7.data) backup.datasets = r7.data;
+    }catch(e){ console.error('backup error',e); }
+  }
+  var json = JSON.stringify(backup, null, 2);
+  var blob = new Blob([json], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tradelog_backup_'+(new Date().toISOString().slice(0,10))+'.json';
+  a.click();
+  showToast('✅ Export สำเร็จ — '+backup.trades.length+' trades, '+backup.data_trades.length+' data trades','success');
+}
+
+function backupImport(){
+  var inp = document.createElement('input');
+  inp.type='file'; inp.accept='.json';
+  inp.onchange = async function(e){
+    var file = e.target.files[0]; if(!file) return;
+    var text = await file.text();
+    var data;
+    try{ data = JSON.parse(text); }catch(err){ showToast('❌ ไฟล์ไม่ถูกต้อง','error'); return; }
+    if(!data.version){ showToast('❌ ไม่ใช่ไฟล์ backup ที่ถูกต้อง','error'); return; }
+    // Confirm
+    var overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999999;display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:360px;';
+    box.innerHTML='<div style="font-size:14px;font-weight:600;margin-bottom:8px;">📥 Import Backup</div>'
+      +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">ไฟล์: <b>'+escHtml(file.name)+'</b><br>Export เมื่อ: '+escHtml(data.exportedAt||'-')+'</div>'
+      +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Trades: '+((data.trades||[]).length)+' | Data: '+((data.data_trades||[]).length)+' | Sessions: '+((data.sessions||[]).length)+'</div>'
+      +'<div style="font-size:11px;color:var(--red);margin-bottom:14px;">⚠️ จะ merge เข้ากับข้อมูลที่มีอยู่ ไม่ได้ลบทิ้ง</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button id="_bkCancel" class="btn-sm">ยกเลิก</button>'
+      +'<button id="_bkConfirm" class="btn-primary" style="font-size:12px;">✓ Import</button>'
+      +'</div>';
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    document.getElementById('_bkCancel').onclick=function(){ overlay.remove(); };
+    document.getElementById('_bkConfirm').onclick=async function(){
+      overlay.remove();
+      await _doBackupImport(data);
+    };
+  };
+  inp.click();
+}
+
+async function _doBackupImport(data){
+  var uid = _authSession && _authSession._sbUserId;
+  if(!_supabase||!uid){ showToast('❌ ต้อง login ก่อน','error'); return; }
+  showToast('⏳ กำลัง Import...','info');
+  var errs=0;
+  try{
+    var fixUid = function(rows){ return (rows||[]).map(function(r){ return Object.assign({},r,{user_id:uid}); }); };
+    if(data.trades&&data.trades.length){
+      var res=await _supabase.from('trades').upsert(fixUid(data.trades),{onConflict:'user_id,id'});
+      if(res.error) errs++;
+    }
+    if(data.data_trades&&data.data_trades.length){
+      var res2=await _supabase.from('data_trades').upsert(fixUid(data.data_trades),{onConflict:'user_id,id'});
+      if(res2.error) errs++;
+    }
+    if(data.sessions&&data.sessions.length){
+      var res3=await _supabase.from('sessions').upsert(fixUid(data.sessions),{onConflict:'user_id,portfolio,date'});
+      if(res3.error) errs++;
+    }
+    if(data.journal&&data.journal.length){
+      var res4=await _supabase.from('journal').upsert(fixUid(data.journal),{onConflict:'user_id,portfolio,date'});
+      if(res4.error) errs++;
+    }
+    if(data.portfolios&&data.portfolios.length){
+      var res5=await _supabase.from('portfolios').upsert(fixUid(data.portfolios),{onConflict:'user_id,id'});
+      if(res5.error) errs++;
+    }
+    if(data.datasets&&data.datasets.length){
+      var res6=await _supabase.from('datasets').upsert(fixUid(data.datasets),{onConflict:'id'});
+      if(res6.error) errs++;
+    }
+    showToast(errs?'⚠️ Import เสร็จแต่มี '+errs+' error':'✅ Import สำเร็จทั้งหมด!', errs?'error':'success');
+    if(!errs) setTimeout(function(){ window.location.reload(); }, 1500);
+  }catch(e){ showToast('❌ '+e.message,'error'); }
+}
+
+// ── TRADE TEMPLATES ──────────────────────────────────────────────────
+if(!window._tradeTemplates) window._tradeTemplates = JSON.parse(lsGet('tj_templates')||'[]');
+
+function openTradeTemplates(){
+  var old=document.getElementById('_tmplModal'); if(old) old.remove();
+  var overlay=document.createElement('div');
+  overlay.id='_tmplModal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  var hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);';
+  hdr.innerHTML='<span style="font-size:14px;font-weight:600;">📋 Trade Templates</span>';
+  var xb=document.createElement('button');
+  xb.textContent='✕'; xb.style.cssText='background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;';
+  xb.onclick=function(){ overlay.remove(); };
+  hdr.appendChild(xb); box.appendChild(hdr);
+  var body=document.createElement('div');
+  body.id='_tmplBody';
+  body.style.cssText='flex:1;overflow-y:auto;padding:10px 12px;';
+  _renderTemplates(body);
+  box.appendChild(body);
+  var foot=document.createElement('div');
+  foot.style.cssText='padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;';
+  var saveBtn=document.createElement('button');
+  saveBtn.className='btn-primary'; saveBtn.style.cssText='font-size:12px;flex:1;';
+  saveBtn.textContent='💾 บันทึก Setup ปัจจุบันเป็น Template';
+  saveBtn.onclick=function(){ _saveCurrentAsTemplate(body); };
+  foot.appendChild(saveBtn); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+  overlay.addEventListener('mousedown',function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+function _renderTemplates(body){
+  body.innerHTML='';
+  if(!_tradeTemplates.length){
+    body.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:20px;font-size:12px;">ยังไม่มี Template — กด "บันทึก Setup ปัจจุบัน" เพื่อเพิ่ม</div>';
+    return;
+  }
+  _tradeTemplates.forEach(function(t,i){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bg-input);';
+    var info=document.createElement('div');
+    info.style.cssText='flex:1;font-size:12px;';
+    info.innerHTML='<b>'+escHtml(t.name)+'</b><br><span style="color:var(--text-muted);font-size:11px;">'
+      +escHtml(t.asset||'-')+' | '+escHtml(t.mode||'-')+' | '+escHtml(t.setupClass||'-')
+      +' | TF:'+escHtml(t.tf||'-')+'</span>';
+    var useBtn=document.createElement('button');
+    useBtn.textContent='▶ ใช้'; useBtn.style.cssText='background:none;border:1px solid var(--purple);color:var(--purple);border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer;';
+    useBtn.onclick=(function(tmpl){ return function(){ _applyTemplate(tmpl); document.getElementById('_tmplModal').remove(); }; })(t);
+    var delBtn=document.createElement('button');
+    delBtn.textContent='×'; delBtn.style.cssText='background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;font-size:13px;padding:2px 7px;cursor:pointer;';
+    delBtn.onclick=(function(idx){ return function(){
+      _tradeTemplates.splice(idx,1);
+      lsSet('tj_templates',JSON.stringify(_tradeTemplates));
+      if(_supabase) sendSheet('saveSettings',{key:'trade_templates',value:JSON.stringify(_tradeTemplates)});
+      _renderTemplates(document.getElementById('_tmplBody'));
+    }; })(i);
+    row.appendChild(info); row.appendChild(useBtn); row.appendChild(delBtn);
+    body.appendChild(row);
+  });
+}
+
+function _saveCurrentAsTemplate(body){
+  var name = prompt('ชื่อ Template:');
+  if(!name||!name.trim()) return;
+  var t = {
+    name: name.trim(),
+    asset: (document.getElementById('oAsset')||{}).value||'',
+    mode: (document.getElementById('oMode')||{}).value||'',
+    setupClass: (document.getElementById('oSetupClass')||{}).value||'',
+    tf: (document.getElementById('oTf')||{}).value||'',
+    trend: (document.getElementById('oTrend')||{}).value||'',
+    confirm: (document.getElementById('oConfirm')||{}).value||'',
+    code: (document.getElementById('oCode')||{}).value||'',
+    zone: (document.getElementById('oZone')||{}).value||'',
+    candle: (document.getElementById('oCandle')||{}).value||'',
+  };
+  _tradeTemplates.push(t);
+  lsSet('tj_templates',JSON.stringify(_tradeTemplates));
+  if(_supabase) sendSheet('saveSettings',{key:'trade_templates',value:JSON.stringify(_tradeTemplates)});
+  _renderTemplates(body);
+  showToast('✅ บันทึก Template "'+t.name+'" แล้ว','success');
+}
+
+function _applyTemplate(t){
+  var fields=['asset','mode','setupClass','tf','trend','confirm','code','zone','candle'];
+  var map={asset:'oAsset',mode:'oMode',setupClass:'oSetupClass',tf:'oTf',trend:'oTrend',confirm:'oConfirm',code:'oCode',zone:'oZone',candle:'oCandle'};
+  fields.forEach(function(f){
+    var el=document.getElementById(map[f]);
+    if(el && t[f]) el.value=t[f];
+  });
+  showToast('✅ ใส่ Template "'+t.name+'" แล้ว','success');
+}
+
+// Load templates from settings on login
+function _loadTemplatesFromSettings(v){
+  try{ var arr=JSON.parse(v); if(Array.isArray(arr)){ window._tradeTemplates=arr; lsSet('tj_templates',v); } }catch(e){}
+}
+
+// ── KEYBOARD SHORTCUTS ───────────────────────────────────────────────
+document.addEventListener('keydown',function(e){
+  if(!_authSession) return;
+  var tag=(e.target||{}).tagName||'';
+  var inInput = tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||e.target.contentEditable==='true';
+  // Ctrl+S = Save Entry
+  if(e.ctrlKey && e.key==='s' && !e.shiftKey){ e.preventDefault(); if(typeof saveEntry==='function') saveEntry(); return; }
+  // Ctrl+Shift+D = Dashboard
+  if(e.ctrlKey && e.shiftKey && e.key==='D'){ e.preventDefault(); switchView('dashboard'); return; }
+  // Ctrl+Shift+T = Trade Template
+  if(e.ctrlKey && e.shiftKey && e.key==='T'){ e.preventDefault(); openTradeTemplates(); return; }
+  // Ctrl+Shift+B = Backup Export
+  if(e.ctrlKey && e.shiftKey && e.key==='B'){ e.preventDefault(); backupExport(); return; }
+  if(inInput) return;
+  // [ / ] = prev/next day
+  if(e.key==='[' && typeof sidebarDateShift==='function'){ sidebarDateShift(-1); return; }
+  if(e.key===']' && typeof sidebarDateShift==='function'){ sidebarDateShift(1); return; }
+  // 1 = Daily, 2 = Weekly, 3 = Dashboard
+  if(e.key==='1'){ switchView('daily'); return; }
+  if(e.key==='2'){ switchView('weekly'); return; }
+  if(e.key==='3'){ switchView('dashboard'); return; }
+  // D = Data Mode
+  if(e.key==='d'||e.key==='D'){ if(typeof dtToggleDataPanel==='function') dtToggleDataPanel(); return; }
+  // ? = show shortcuts
+  if(e.key==='?'){ _showShortcutsHelp(); return; }
+});
+
+function _showShortcutsHelp(){
+  var old=document.getElementById('_kbHelp'); if(old){old.remove();return;}
+  var overlay=document.createElement('div');
+  overlay.id='_kbHelp';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  var rows=[
+    ['Ctrl+S','บันทึก Entry'],['Ctrl+Shift+D','เปิด Dashboard'],
+    ['Ctrl+Shift+T','Trade Templates'],['Ctrl+Shift+B','Export Backup'],
+    ['[ / ]','วันก่อน / วันถัดไป'],['1 / 2 / 3','Daily / Weekly / Dashboard'],
+    ['D','เปิด/ปิด Data Mode'],['?','แสดง Shortcuts'],['Esc','ปิด'],
+  ];
+  var html='<div style="background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 12px 48px rgba(0,0,0,.8);">'
+    +'<div style="font-size:14px;font-weight:600;margin-bottom:12px;">⌨️ Keyboard Shortcuts</div>'
+    +rows.map(function(r){
+      return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">'
+        +'<code style="background:var(--bg-input);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:11px;">'+escHtml(r[0])+'</code>'
+        +'<span style="color:var(--text-muted);">'+escHtml(r[1])+'</span></div>';
+    }).join('')
+    +'<div style="text-align:center;margin-top:10px;"><button id="_kbHelpClose" class="btn-sm" style="width:100%;">ปิด</button></div>'
+    +'</div>';
+  overlay.innerHTML=html;
+  overlay.addEventListener('mousedown',function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+  var _kbc=document.getElementById('_kbHelpClose');
+  if(_kbc) _kbc.onclick=function(){ overlay.remove(); };
+}
+
+// ── DRAWDOWN ALERT / NOTIFICATION ───────────────────────────────────
+var _ddAlert = { threshold: parseFloat(lsGet('tj_dd_alert')||'0'), fired: false };
+
+function checkDrawdownAlert(currentDD){
+  if(!_ddAlert.threshold || _ddAlert.threshold <= 0) return;
+  if(Math.abs(currentDD) >= _ddAlert.threshold && !_ddAlert.fired){
+    _ddAlert.fired = true;
+    _showAlert('⚠️ Drawdown Alert', 'Drawdown ถึง $'+Math.abs(currentDD).toFixed(2)+' เกิน threshold $'+_ddAlert.threshold.toFixed(2));
+    if('Notification' in window && Notification.permission==='granted'){
+      new Notification('⚠️ TradeLog: Drawdown Alert', { body: 'Drawdown $'+Math.abs(currentDD).toFixed(2) });
+    }
+  }
+  if(Math.abs(currentDD) < _ddAlert.threshold) _ddAlert.fired = false;
+}
+
+function _showAlert(title, msg){
+  var toast=document.createElement('div');
+  toast.style.cssText='position:fixed;top:60px;right:20px;background:var(--red);color:#fff;border-radius:10px;padding:12px 16px;font-size:13px;z-index:99999;max-width:300px;box-shadow:0 4px 20px rgba(0,0,0,.5);cursor:pointer;';
+  toast.innerHTML='<b>'+escHtml(title)+'</b><br>'+escHtml(msg);
+  toast.onclick=function(){toast.remove();};
+  document.body.appendChild(toast);
+  setTimeout(function(){if(toast.parentNode)toast.remove();},8000);
+}
+
+function openDrawdownSettings(){
+  var cur=_ddAlert.threshold||0;
+  var val=prompt('แจ้งเตือนเมื่อ Drawdown เกิน $:\n(ใส่ 0 เพื่อปิด)',cur);
+  if(val===null) return;
+  var n=parseFloat(val)||0;
+  _ddAlert.threshold=n; _ddAlert.fired=false;
+  lsSet('tj_dd_alert',String(n));
+  if(_supabase) sendSheet('saveSettings',{key:'dd_alert_threshold',value:String(n)});
+  showToast(n>0?'✅ แจ้งเตือน Drawdown > $'+n:'✅ ปิด Drawdown Alert แล้ว','success');
+  if(n>0 && 'Notification' in window && Notification.permission!=='granted'){
+    Notification.requestPermission();
+  }
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────
+async function renderDashboard(){
+  var el=document.getElementById('dashContent'); if(!el) return;
+  el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">⏳ กำลังโหลด...</div>';
+  var uid=_authSession&&_authSession._sbUserId;
+  if(!_supabase||!uid){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">❌ กรุณาเชื่อมต่อ Supabase</div>'; return; }
+  // Fetch all trades
+  var [t1,t2,t3]=await Promise.all([
+    _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
+    _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
+    _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false)
+  ]);
+  var trades=(t1.data||[]).concat((t2.data||[]).map(function(t){return Object.assign({},t,{portfolio:t.dataset_id||'default'});}));
+  var ports=t3.data||[];
+  if(!trades.length){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในระบบ</div>'; return; }
+  _renderDashboardHTML(el, trades, ports);
+}
+
+function _renderDashboardHTML(el, trades, ports){
+  var wins=trades.filter(function(t){return (t.result||'').toLowerCase()==='win';});
+  var losses=trades.filter(function(t){return (t.result||'').toLowerCase()==='loss';});
+  var totalPnl=trades.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0);
+  var winRate=trades.length?Math.round(wins.length/trades.length*100):0;
+  var avgWin=wins.length?wins.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0)/wins.length:0;
+  var avgLoss=losses.length?Math.abs(losses.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0)/losses.length):0;
+  var pf=avgLoss>0?Math.abs(avgWin/avgLoss):0;
+  // Streak
+  var streak=_calcStreak(trades);
+  // By setup
+  var setupStats=_groupBy(trades,'setup_class');
+  // By session
+  var sessStats=_groupBySession(trades);
+  // By asset
+  var assetStats=_groupBy(trades,'asset');
+  // Drawdown
+  var maxDD=_calcMaxDD(trades);
+  checkDrawdownAlert(maxDD);
+
+  var kpis=[
+    {label:'Net P&L',val:(totalPnl>=0?'+':'')+totalPnl.toFixed(2),color:totalPnl>=0?'var(--green)':'var(--red)'},
+    {label:'Win Rate',val:winRate+'%',color:winRate>=50?'var(--green)':'var(--red)'},
+    {label:'Total Trades',val:trades.length,color:'var(--text-primary)'},
+    {label:'Profit Factor',val:pf?pf.toFixed(2):'-',color:pf>=1?'var(--green)':'var(--red)'},
+    {label:'Avg Win',val:avgWin?'+$'+avgWin.toFixed(2):'-',color:'var(--green)'},
+    {label:'Avg Loss',val:avgLoss?'-$'+avgLoss.toFixed(2):'-',color:'var(--red)'},
+    {label:'Max Drawdown',val:maxDD?'-$'+Math.abs(maxDD).toFixed(2):'-',color:'var(--red)'},
+    {label:'Current Streak',val:(streak.type==='win'?'🔥':'❄️')+' '+Math.abs(streak.count)+(streak.type==='win'?' Win':' Loss'),color:streak.type==='win'?'var(--green)':'var(--red)'},
+  ];
+
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;">'
+    +kpis.map(function(k){
+      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">'
+        +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">'+escHtml(k.label)+'</div>'
+        +'<div style="font-size:20px;font-weight:700;color:'+k.color+';">'+escHtml(String(k.val))+'</div>'
+        +'</div>';
+    }).join('')+'</div>';
+
+  // Best/Worst Setup
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">';
+  html+=_renderSetupTable('🏆 Best Setups', setupStats, 'best');
+  html+=_renderSetupTable('💀 Worst Setups', setupStats, 'worst');
+  html+='</div>';
+
+  // Session Heatmap
+  html+='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:20px;">';
+  html+='<div style="font-size:13px;font-weight:600;margin-bottom:12px;">🌐 Session Heatmap (PnL per Day × Session)</div>';
+  html+=_renderHeatmap(sessStats);
+  html+='</div>';
+
+  // Alert button
+  html+='<div style="text-align:right;margin-bottom:10px;">'
+    +'<button onclick="openDrawdownSettings()" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;">🔔 ตั้งค่า Drawdown Alert ('+((_ddAlert.threshold||0)>0?'$'+_ddAlert.threshold:'ปิดอยู่')+')</button>'
+    +'</div>';
+
+  el.innerHTML=html;
+}
+
+function _calcStreak(trades){
+  var sorted=trades.slice().sort(function(a,b){ return (a.entry_date||a.close_date||'') > (b.entry_date||b.close_date||'') ? 1 : -1; });
+  var streak=0, type='none';
+  for(var i=sorted.length-1;i>=0;i--){
+    var r=(sorted[i].result||'').toLowerCase();
+    if(r!=='win'&&r!=='loss') continue;
+    if(streak===0){ type=r; streak=1; }
+    else if(r===type){ streak++; }
+    else break;
+  }
+  return {type:type,count:streak};
+}
+
+function _calcMaxDD(trades){
+  var sorted=trades.slice().sort(function(a,b){ return (a.entry_date||'') > (b.entry_date||'') ? 1:-1; });
+  var peak=0, dd=0, cum=0;
+  sorted.forEach(function(t){
+    cum+=parseFloat(t.pnl)||0;
+    if(cum>peak) peak=cum;
+    var d=cum-peak;
+    if(d<dd) dd=d;
+  });
+  return dd;
+}
+
+function _groupBy(trades,key){
+  var groups={};
+  trades.forEach(function(t){
+    var k=(t[key]||'Unknown');
+    if(!groups[k]) groups[k]={wins:0,losses:0,pnl:0,count:0};
+    groups[k].count++;
+    groups[k].pnl+=parseFloat(t.pnl)||0;
+    var r=(t.result||'').toLowerCase();
+    if(r==='win') groups[k].wins++;
+    else if(r==='loss') groups[k].losses++;
+  });
+  return groups;
+}
+
+function _renderSetupTable(title, groups, type){
+  var arr=Object.keys(groups).filter(function(k){return k&&k!=='Unknown'&&k!==''&&groups[k].count>=2;}).map(function(k){
+    var g=groups[k];
+    return {name:k, wr:g.count?Math.round(g.wins/g.count*100):0, pnl:g.pnl, count:g.count};
+  });
+  arr.sort(function(a,b){ return type==='best'?b.pnl-a.pnl:a.pnl-b.pnl; });
+  arr=arr.slice(0,5);
+  if(!arr.length) return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;">'+escHtml(title)+'</div><div style="font-size:12px;color:var(--text-muted);">ข้อมูลไม่เพียงพอ</div></div>';
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;">'
+    +'<div style="font-size:13px;font-weight:600;margin-bottom:10px;">'+escHtml(title)+'</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    +'<tr style="color:var(--text-muted);"><th style="text-align:left;padding:3px 0;">Setup</th><th>WR%</th><th>PnL</th><th>N</th></tr>'
+    +arr.map(function(r){
+      return '<tr style="border-top:1px solid var(--border);">'
+        +'<td style="padding:4px 0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escHtml(r.name)+'</td>'
+        +'<td style="text-align:center;color:'+(r.wr>=50?'var(--green)':'var(--red)')+';">'+r.wr+'%</td>'
+        +'<td style="text-align:right;color:'+(r.pnl>=0?'var(--green)':'var(--red)')+';">'+(r.pnl>=0?'+':'')+r.pnl.toFixed(1)+'</td>'
+        +'<td style="text-align:center;color:var(--text-muted);">'+r.count+'</td>'
+        +'</tr>';
+    }).join('')+'</table></div>';
+}
+
+function _groupBySession(trades){
+  var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var sessions=['Sydney','Tokyo','London','New York'];
+  var grid={};
+  days.forEach(function(d){
+    grid[d]={};
+    sessions.forEach(function(s){ grid[d][s]={pnl:0,count:0}; });
+  });
+  trades.forEach(function(t){
+    var dateStr=t.entry_date||t.close_date||'';
+    if(!dateStr) return;
+    var dt=new Date(dateStr);
+    if(isNaN(dt)) return;
+    var day=days[dt.getDay()];
+    var sess=(t.sessions||'');
+    sessions.forEach(function(s){
+      if(sess.toLowerCase().indexOf(s.toLowerCase())>=0){
+        grid[day][s].pnl+=parseFloat(t.pnl)||0;
+        grid[day][s].count++;
+      }
+    });
+  });
+  return grid;
+}
+
+function _renderHeatmap(grid){
+  var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var sessions=['Sydney','Tokyo','London','New York'];
+  var allVals=[];
+  days.forEach(function(d){ sessions.forEach(function(s){ allVals.push(grid[d][s].pnl); }); });
+  var maxAbs=Math.max.apply(null,allVals.map(Math.abs))||1;
+  var html='<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11px;width:100%;">'
+    +'<tr><th style="padding:4px 8px;text-align:left;color:var(--text-muted);">Session \ Day</th>'
+    +days.map(function(d){ return '<th style="padding:4px 6px;color:var(--text-muted);">'+d+'</th>'; }).join('')+'</tr>';
+  sessions.forEach(function(s){
+    html+='<tr><td style="padding:5px 8px;font-weight:500;white-space:nowrap;">'+escHtml(s)+'</td>';
+    days.forEach(function(d){
+      var cell=grid[d][s];
+      var intensity=maxAbs>0?Math.min(Math.abs(cell.pnl)/maxAbs,1):0;
+      var bg=cell.pnl>0?'rgba(34,197,94,'+intensity*.6+')':cell.pnl<0?'rgba(239,68,68,'+intensity*.6+')':'transparent';
+      html+='<td style="padding:5px 6px;text-align:center;background:'+bg+';border-radius:4px;cursor:default;" title="'+escHtml(s)+' '+escHtml(d)+': $'+cell.pnl.toFixed(2)+' ('+cell.count+' trades)">'
+        +(cell.count?'<span style="font-size:10px;color:'+(cell.pnl>=0?'var(--green)':'var(--red)')+';">'+(cell.pnl>=0?'+':'')+cell.pnl.toFixed(1)+'</span>':'<span style="color:var(--border);">-</span>')
+        +'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</table></div>';
+  return html;
+}
+
+// ── Wire up template loading from settings ───────────────────────────
+var _origSettingsApply = typeof _applySettingsRow === 'function' ? _applySettingsRow : null;
+// Hook into settings load
+
+
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
     var ov=document.getElementById('ndImgOverlay');
