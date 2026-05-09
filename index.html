@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v3 -->
+<!-- TRADELOG-FIXED-v4 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -677,8 +677,8 @@ var _supabase = null;
       style="display:none;color:var(--purple);border-color:rgba(168,85,247,.35);">👥</button>
     <button class="btn-icon" id="logoutBtn" title="ออกจากระบบ" onclick="authLogout()"
       style="display:none;" >🚪</button>
-    <div style="position:relative;">
-      <button class="btn-icon" id="themeBtn" onclick="toggleTheme()" title="เปลี่ยน Theme" style="font-size:16px;">🌙</button>
+    <button class="btn-icon" id="themeBtn" onclick="toggleTheme()" title="เปลี่ยน Theme" style="font-size:16px;flex-shrink:0;">🌙</button>
+    <div style="position:relative;flex-shrink:0;">
       <button class="btn-icon" id="menuBtn" onclick="toggleMenu(event)">⚙</button>
       <div id="dropMenu" style="display:none;position:absolute;right:0;top:35px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);min-width:215px;z-index:300;overflow:hidden;">
         <div style="padding:5px 0;">
@@ -8282,10 +8282,34 @@ async function _doTradeSearch(query, resultsEl){
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:3px;background:var(--bg-input);';
     row.onmouseover = function(){ this.style.borderColor='var(--border-hover)'; };
     row.onmouseout  = function(){ this.style.borderColor='var(--border)'; };
-    row.onclick = (function(date){ return function(){
-      openDayByKey(date);
+    row.onclick = (function(trade){ return function(){
       var m=document.getElementById('_searchModal'); if(m) m.remove();
-    }; })(t.date||'');
+      if(trade.portfolio==='[Data]'){
+        // Open Data Mode and filter to this date
+        if(typeof dtToggleDataPanel==='function'){
+          // Make sure data panel is open
+          var dataView=document.getElementById('dataView');
+          if(dataView && !dataView.classList.contains('open')) dtToggleDataPanel();
+          // Filter by date
+          setTimeout(function(){
+            var dtfDay=document.getElementById('dtfDay');
+            // find the trade in DT by id and scroll to it
+            if(window.DT && DT.trades){
+              var found=DT.trades.findIndex(function(t){ return t.date===trade.date && t.asset===trade.asset && Math.abs((parseFloat(t.pnl)||0)-(parseFloat(trade.pnl)||0))<0.01; });
+              if(found>=0){
+                if(typeof dtRender==='function') dtRender();
+                setTimeout(function(){
+                  var rows=document.querySelectorAll('#dtBody tr');
+                  if(rows[found]) rows[found].scrollIntoView({behavior:'smooth',block:'center'});
+                },400);
+              }
+            }
+          },300);
+        }
+      } else {
+        openDayByKey(trade.date||'');
+      }
+    }; })(t);
     row.innerHTML = '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;min-width:80px;">'+escHtml(t.date||'-')+'</span>'
       +'<span style="font-size:12px;font-weight:600;min-width:60px;">'+escHtml(t.asset||'-')+'</span>'
       +'<span style="font-size:11px;color:var(--text-muted);flex:1;">'+escHtml(t.code||'')+' '+escHtml(t.mode||'')+'</span>'
@@ -8425,26 +8449,28 @@ function openRiskCalc(){
   document.getElementById('_rcApply').onclick = function(){
     var risk = calcRisk();
     var applied = false;
-    // Check which modal is currently open and apply to the correct risk field
-    var mDT = document.getElementById('mDT');
-    var mOrder = document.getElementById('mOrder');
-    var dtOpen = mDT && mDT.classList.contains('open');
-    var orderOpen = mOrder && mOrder.classList.contains('open');
+    // mDataTrade = Data Mode modal, mDay = Journal day modal (contains Add Entry)
+    var mDataTrade = document.getElementById('mDataTrade');
+    var mDay = document.getElementById('mDay');
+    var dtOpen = mDataTrade && mDataTrade.classList.contains('open');
+    var dayOpen = mDay && mDay.classList.contains('open');
     if(dtOpen){
       var riskEl = document.getElementById('dtRisk');
       if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
-    } else if(orderOpen) {
-      var riskEl = document.getElementById('oRisk');
-      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); applied=true; }
-    } else {
-      // Fallback: try both
+    }
+    if(dayOpen){
+      var riskEl2 = document.getElementById('oRisk');
+      if(riskEl2){ riskEl2.value = risk.toFixed(2); riskEl2.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof calcRiskLots==='function') calcRiskLots(); applied=true; }
+    }
+    if(!applied){
+      // Fallback: fill both fields
       var el1 = document.getElementById('oRisk');
       var el2 = document.getElementById('dtRisk');
-      var riskEl = el1 || el2;
-      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
+      if(el1){ el1.value = risk.toFixed(2); el1.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); applied=true; }
+      if(el2){ el2.value = risk.toFixed(2); el2.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
     }
+    overlay.remove();
     if(applied){
-      overlay.remove();
       showToast('✅ ใส่ Risk $'+risk.toFixed(2)+' แล้ว','success');
     } else {
       showToast('❌ ไม่พบช่อง Risk กรุณาเปิด Add Trade ก่อน','error');
@@ -10074,7 +10100,25 @@ async function dtDoScan(){
   if(btn){btn.disabled=true;btn.textContent='⏳ กำลัง Scan...';}
   var res=document.getElementById('dtScanResult');
   if(res){res.style.display='block';res.innerHTML='<span style="color:var(--text-muted);">🔍 กำลังวิเคราะห์ด้วย '+S.prov.toUpperCase()+'...</span>';}
-  var prompt='อ่านข้อมูล trade จากรูปนี้ แล้วตอบเป็น JSON แบบนี้: {"asset":"","side":"Long","entry":0,"tp":0,"sl":0,"pnl":0,"result":"","entryTime":"HH:MM","closeTime":"HH:MM"} ถ้าไม่เห็นค่าไหนให้ใส่ null';
+  var prompt=[
+    'You are a trading screenshot OCR expert. Extract trade data from this chart image.',
+    'Return ONLY raw JSON, no markdown, no explanation.',
+    '',
+    'Rules:',
+    '1. ASSET: instrument name without "!" e.g. "MNQ1", "NQ1"',
+    '2. SIDE: "Long" or "Short"',
+    '3. ENTRY/TP/SL: price numbers only',
+    '4. ENTRY DATE & TIME: Look at the BOTTOM X-AXIS for BLUE highlighted timestamp boxes.',
+    '   The LEFTMOST blue marker = entry time.',
+    '   Thai month: ม.ค.=01 ก.พ.=02 มี.ค.=03 เม.ย.=04 พ.ค.=05 มิ.ย.=06 ก.ค.=07 ส.ค.=08 ก.ย.=09 ต.ค.=10 พ.ย.=11 ธ.ค.=12',
+    '   Year: "26"=2026 "25"=2025',
+    '   Format: "YYYY-MM-DDTHH:MM" e.g. "2026-03-10T09:42"',
+    '5. CLOSE DATE & TIME: Look for the SECOND (rightmost) blue marker on X-axis.',
+    '   Same format: "YYYY-MM-DDTHH:MM". Return "" if only one marker.',
+    '6. PNL: profit/loss number (negative for loss)',
+    '',
+    'Return: {"asset":"","side":"Long","entry":0,"tp":0,"sl":0,"pnl":null,"result":"","entry_datetime":"","close_datetime":""}'
+  ].join('\n');
   try{
     var text=await callVision(prompt, DT._upB64);
     var match=text.match(/\{[\s\S]*\}/);
@@ -10107,22 +10151,35 @@ async function dtDoScan(){
       if(d.pnl!=null&&d.pnl!==''){var pv2=parseFloat(d.pnl);if(!isNaN(pv2)){document.getElementById('dtPnl').value=pv2;filled.push({k:'P&L',v:pv2});}}
       // Result
       if(d.result&&d.result!==''){var rSel=document.getElementById('dtResult');if(rSel){rSel.value=d.result;filled.push({k:'Result',v:d.result});}}
-      // Entry/Close DateTime — combine with entry date for datetime-local field
-      if(d.entryTime&&d.entryTime!==''){
+      // Entry DateTime — support both entry_datetime (full) and entryTime (HH:MM only)
+      var entryDTval = d.entry_datetime || '';
+      var entryTimeVal = d.entryTime || '';
+      if(entryDTval && entryDTval.length>=16){
+        document.getElementById('dtEntryDate').value=entryDTval.substring(0,16);
+        dtAutoSession(); if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+        filled.push({k:'Entry Time',v:entryDTval.substring(0,16).replace('T',' ')});
+      } else if(entryTimeVal && entryTimeVal!==''){
         var baseDate=document.getElementById('dtEntryDate').value;
         var baseDatePart=baseDate?baseDate.substring(0,10):(new Date().toISOString().substring(0,10));
-        var fullEDT=baseDatePart+'T'+(d.entryTime.length===5?d.entryTime:d.entryTime.substring(0,5));
+        var fullEDT=baseDatePart+'T'+entryTimeVal.substring(0,5);
         document.getElementById('dtEntryDate').value=fullEDT;
-        dtAutoSession(); dtCalcTimeInPos && dtCalcTimeInPos();
-        filled.push({k:'Entry Time',v:d.entryTime});
+        dtAutoSession(); if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+        filled.push({k:'Entry Time',v:entryTimeVal});
       }
-      if(d.closeTime&&d.closeTime!==''){
+      // Close DateTime — support both close_datetime (full) and closeTime (HH:MM only)
+      var closeDTval = d.close_datetime || '';
+      var closeTimeVal = d.closeTime || '';
+      if(closeDTval && closeDTval.length>=16){
+        document.getElementById('dtCloseDate').value=closeDTval.substring(0,16);
+        if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+        filled.push({k:'Close Time',v:closeDTval.substring(0,16).replace('T',' ')});
+      } else if(closeTimeVal && closeTimeVal!==''){
         var baseDate2=document.getElementById('dtEntryDate').value;
         var baseDatePart2=baseDate2?baseDate2.substring(0,10):(new Date().toISOString().substring(0,10));
-        var fullCDT=baseDatePart2+'T'+(d.closeTime.length===5?d.closeTime:d.closeTime.substring(0,5));
+        var fullCDT=baseDatePart2+'T'+closeTimeVal.substring(0,5);
         document.getElementById('dtCloseDate').value=fullCDT;
-        dtCalcTimeInPos && dtCalcTimeInPos();
-        filled.push({k:'Close Time',v:d.closeTime});
+        if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+        filled.push({k:'Close Time',v:closeTimeVal});
       }
       dtCalcAll();
       // Build pill display
