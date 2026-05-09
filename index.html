@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v4 -->
+<!-- TRADELOG-FIXED-v5 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -3611,6 +3611,16 @@ function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear(
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
 function switchView(v){
+  // If switching to calendar views, close data mode panel
+  if(v==='daily'||v==='weekly'||v==='dashboard'){
+    document.body.classList.remove('data-mode-open');
+    var dv=document.getElementById('dataView');
+    if(dv) dv.classList.remove('open');
+    var dt=document.getElementById('dataToggleThumb');
+    var tk=document.getElementById('dataToggleTrack');
+    if(dt){dt.style.left='2px';dt.style.background='var(--text-muted)';}
+    if(tk) tk.style.background='var(--bg-input)';
+  }
   document.getElementById('dailyView').style.display=v==='daily'?'block':'none';
   document.getElementById('weeklyView').style.display=v==='weekly'?'block':'none';
   var dashEl = document.getElementById('dashboardView');
@@ -8431,9 +8441,18 @@ function openRiskCalc(){
     +'<div style="font-size:11px;color:var(--text-muted);">Risk Amount</div></div>'
     +'<div style="display:flex;gap:8px;">'
     +'<button id="_rcApply" class="btn-primary" style="flex:1;font-size:12px;">↗ ใส่ใน Risk Field</button>'
-    +'<button id="_rcSave" class="btn-sm">💾 จำค่า</button></div></div>';
+    +'<button id="_rcSave" class="btn-sm">💾 จำค่า</button>'    +'<button id="_rcCancel" class="btn-sm" style="background:rgba(239,68,68,.15);color:var(--red);border-color:var(--red);">✕ ยกเลิก</button></div></div>';
   overlay.appendChild(box); document.body.appendChild(overlay);
   document.getElementById('_rcClose').onclick = function(){ overlay.remove(); };
+  document.getElementById('_rcCancel').onclick = function(){
+    // Reset risk fields to default (50)
+    var el1=document.getElementById('oRisk');
+    var el2=document.getElementById('dtRisk');
+    if(el1){ el1.value='50'; el1.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof calcRiskLots==='function') calcRiskLots(); }
+    if(el2){ el2.value='50'; el2.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); }
+    overlay.remove();
+    showToast('↩ รีเซ็ต Risk เป็น $50','info');
+  };
   overlay.addEventListener('mousedown',function(e){ if(e.target===overlay) overlay.remove(); });
   function calcRisk(){
     var acc = parseFloat(document.getElementById('_rcAcc').value)||0;
@@ -10376,6 +10395,7 @@ function dtSaveTrade(){
     discipline:'วินัย '+DT.disc+'/10',
     note:gv('dtNote'),imgLink:gv('dtImgLink'),
     portfolio: S.currentPortfolio||'default',
+    dataset_id: (document.getElementById('dsSelector')&&document.getElementById('dsSelector').value)||'default',
     _src:'data'
   };
   _dtPendingTrade=t;
@@ -11255,8 +11275,11 @@ async function openPortSelectorModal(){
     portHdr.textContent='พอร์ตที่ต้องการแสดง';
     portSect.appendChild(portHdr);
 
-    // ถ้า _dtSelectedPorts ว่าง → initialize ด้วยทุก port (all checked by default)
-    if(_dtSelectedPorts.length===0) ports.forEach(function(p){ _dtSelectedPorts.push(p); });
+    // ถ้า _dtSelectedPorts ว่าง → ครั้งแรก init ด้วยทุก port แต่ถ้าตั้งใจ uncheck ทั้งหมด ให้ว่าง
+    if(_dtSelectedPorts.length===0 && !window._dtPortInitialized){
+      ports.forEach(function(p){ _dtSelectedPorts.push(p); });
+      window._dtPortInitialized=true;
+    }
     ports.forEach(function(pid){
       var pname=(S.portfolios&&S.portfolios[pid]&&S.portfolios[pid].name)||pid;
       var checked=_dtSelectedPorts.indexOf(pid)>=0;
@@ -11286,11 +11309,12 @@ async function openPortSelectorModal(){
     dsHdr.style.cssText='font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;';
     dsHdr.textContent='Dataset ที่ต้องการแสดง';
     dsSect.appendChild(dsHdr);
-    if(!window._dtSelectedDatasets || !_dtSelectedDatasets.length){
+    if(!window._dtSelectedDatasets || (!_dtSelectedDatasets.length && !window._dtDsInitialized)){
       window._dtSelectedDatasets = DS.list.map(function(d){ return d.id; });
+      window._dtDsInitialized = true;
     }
     DS.list.forEach(function(ds){
-      var checked = !_dtSelectedDatasets || _dtSelectedDatasets.indexOf(ds.id)>=0;
+      var checked = _dtSelectedDatasets && _dtSelectedDatasets.indexOf(ds.id)>=0;
       var lbl=document.createElement('label');
       lbl.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;font-size:13px;border:1px solid var(--border);background:var(--bg-input);margin-bottom:6px;transition:border-color .15s;';
       lbl.addEventListener('mouseover',function(){this.style.borderColor='var(--purple)';});
@@ -11373,7 +11397,7 @@ function buildPortCheckList(){
   var ports=Object.keys(S.portfolios||{'default':{}});
   list.innerHTML=ports.map(function(pid){
     var pname=(S.portfolios&&S.portfolios[pid]&&S.portfolios[pid].name)||pid;
-    var checked=_dtSelectedPorts.indexOf(pid)>=0||_dtSelectedPorts.length===0;
+    var checked=_dtSelectedPorts.indexOf(pid)>=0;
     return '<label style="display:flex;align-items:center;gap:7px;padding:4px 3px;cursor:pointer;border-radius:6px;font-size:11px;color:var(--text-secondary);" onmouseover="this.style.background=\'var(--bg-secondary)\'" onmouseout="this.style.background=\'\'"><input type="checkbox" '+(checked?'checked':'')+' onchange="dtTogglePort(\''+pid+'\',this.checked);dtRender();updatePortSelectorLabel()" style="cursor:pointer;accent-color:var(--accent);"> 📁 '+pname+'</label>';
   }).join('');
 }
