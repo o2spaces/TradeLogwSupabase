@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v7 -->
+<!-- TRADELOG-FIXED-v8 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -701,7 +701,6 @@ var _supabase = null;
           <div class="drop-cat">ทั่วไป</div>
           <div class="drop-item" onclick="openTradeSearch();closeMenu()">🔍 ค้นหา Trade (Ctrl+F)</div>
           <div class="drop-item" onclick="openWeeklyGoals();closeMenu()">🎯 Weekly Goals</div>
-          <div class="drop-item" onclick="openRiskCalc();closeMenu()">📐 Risk Calculator</div>
           <div class="drop-item" onclick="openDrawdownSettings();closeMenu()">🔔 Drawdown Alert</div>
           <div class="drop-item" onclick="_showShortcutsHelp();closeMenu()">⌨️ Keyboard Shortcuts (?)</div>
           <div class="drop-item" onclick="openShareDashboard();closeMenu()">🔗 Share Dashboard</div>
@@ -3633,6 +3632,12 @@ function switchView(v){
   if(v==='weekly'){renderWeekly();drawEQW();}
   else if(v==='dashboard'){ renderDashboard(); }
   else{drawEQ();}
+  // Update mobile nav buttons
+  ['daily','weekly','dashboard'].forEach(function(n){
+    var btn = document.getElementById('_mb'+n.charAt(0).toUpperCase()+n.slice(1));
+    if(btn) btn.className = v===n ? 'active' : '';
+  });
+  if(typeof closeMobileDrawers==='function') closeMobileDrawers();
 }
 
 function renderCal(){
@@ -8127,15 +8132,6 @@ function closeMobileDrawers(){
   layout.classList.remove('mobile-left-open','mobile-right-open');
 }
 // Override switchView to update mobile nav
-var _origSwitchView = switchView;
-function switchView(v){
-  _origSwitchView(v);
-  ['daily','weekly','dashboard'].forEach(function(n){
-    var btn = document.getElementById('_mb'+n.charAt(0).toUpperCase()+n.slice(1));
-    if(btn) btn.className = v===n ? 'active' : '';
-  });
-  closeMobileDrawers();
-}
 
 // ── DARK/LIGHT THEME ────────────────────────────────────────────
 function toggleTheme(){
@@ -8929,8 +8925,6 @@ document.addEventListener('keydown',function(e){
   if(e.ctrlKey && e.key==='f'){ e.preventDefault(); openTradeSearch(); return; }
   // Ctrl+G = Weekly Goals
   if(e.ctrlKey && e.key==='g'){ e.preventDefault(); openWeeklyGoals(); return; }
-  // Ctrl+R = Risk Calculator
-  if((e.ctrlKey && e.shiftKey && e.key==='R') || (e.ctrlKey && e.key==='r' && !e.shiftKey && inInput===false)){ e.preventDefault(); openRiskCalc(); return; }
   // Ctrl+Shift+D = Dashboard
   if(e.ctrlKey && e.shiftKey && e.key==='D'){ e.preventDefault(); switchView('dashboard'); return; }
   // Ctrl+Shift+T = Trade Template
@@ -10231,6 +10225,18 @@ function dtOpenAdd(){
   // Re-load dropdown options from localStorage every time modal opens
   loadDropOptions();
   // Reset all fields
+  // Auto-fill Risk from saved default
+  var _savedRisk = window._dtDefaultRisk || parseFloat(localStorage.getItem('dtDefaultRisk')||'');
+  if(_savedRisk && !isNaN(_savedRisk)){
+    window._dtDefaultRisk = _savedRisk;
+    setTimeout(function(){
+      var rEl=document.getElementById('dtRisk');
+      if(rEl){ rEl.value=_savedRisk.toFixed(2); rEl.dispatchEvent(new Event('input')); dtCalcAll(); }
+      // Highlight Set Default button to show default is active
+      var sdb=document.getElementById('dtRiskSetDefault');
+      if(sdb){sdb.style.background='var(--accent)';sdb.style.color='#fff';}
+    },100);
+  }
   var ids=['dtEntry','dtTP','dtSL2','dtRisk','dtLots','dtPnl','dtMaxRR','dtNote','dtImgLink',
            'dtTimePos','dtSetupDur','dtClose','dtFees','dtComm'];
   ids.forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
@@ -12487,14 +12493,14 @@ function dtToggleDataPanel(){
 }
 
 // ── View switcher (Daily / Weekly only — does NOT touch Data panel) ──
-var _origSwitchView=switchView;
+var switchView=switchView;
 switchView=function(v){
   ['btnDaily','btnWeekly'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.className='view-btn';
   });
   var btn=document.getElementById('btn'+v.charAt(0).toUpperCase()+v.slice(1));
   if(btn) btn.className='view-btn active';
-  _origSwitchView(v);
+  switchView(v);
 };
 
 // ── AI Data Mode Analysis ──
@@ -12706,7 +12712,26 @@ if(document.readyState==='loading'){
 
       <!-- Risk / Lots / Fees / Commission -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
-        <div class="form-field"><label>Risk ($)</label><input class="form-input" id="dtRisk" type="number" step="any" placeholder="50" oninput="window._dtSLIgnored=false;dtCalcAll()"></div>
+        <div class="form-field">
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>Risk ($)</span>
+            <span style="display:flex;gap:4px;">
+              <button type="button" id="dtRiskSetDefault"
+                onclick="(function(){var v=document.getElementById('dtRisk').value;if(!v||isNaN(v)){showToast('ใส่ค่า Risk ก่อนนะ','error');return;}window._dtDefaultRisk=parseFloat(v);localStorage.setItem('dtDefaultRisk',v);showToast('✅ จำค่า Risk $'+parseFloat(v).toFixed(2)+' แล้ว','success');document.getElementById('dtRiskSetDefault').style.background='var(--accent)';document.getElementById('dtRiskSetDefault').style.color='#fff';})()"
+                title="จำค่า Risk นี้สำหรับออเดอร์ถัดไป"
+                style="font-size:9px;padding:2px 7px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;white-space:nowrap;line-height:1.5;">
+                💾 Set Default
+              </button>
+              <button type="button" id="dtRiskForget"
+                onclick="(function(){window._dtDefaultRisk=null;localStorage.removeItem('dtDefaultRisk');document.getElementById('dtRisk').value='';dtCalcAll();showToast('🗑 ลืมค่า Default Risk แล้ว','info');document.getElementById('dtRiskSetDefault').style.background='';document.getElementById('dtRiskSetDefault').style.color='';})()"
+                title="ลืมค่า Risk Default"
+                style="font-size:9px;padding:2px 7px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;white-space:nowrap;line-height:1.5;">
+                🗑 Forget
+              </button>
+            </span>
+          </label>
+          <input class="form-input" id="dtRisk" type="number" step="any" placeholder="50" oninput="window._dtSLIgnored=false;dtCalcAll()">
+        </div>
         <div class="form-field"><label>Lots <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="dtLots" type="number" step="0.01" placeholder="auto" oninput="dtCalcAll()"></div>
         <div class="form-field"><label>Fees ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="dtFees" type="number" step="any" placeholder="auto" oninput="dtCalcAll()" onchange="dtCalcAll()"></div>
         <div class="form-field"><label>Comm ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="dtComm" type="number" step="any" placeholder="auto" oninput="dtCalcAll()" onchange="dtCalcAll()"></div>
