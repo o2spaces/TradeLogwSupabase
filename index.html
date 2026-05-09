@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v5 -->
+<!-- TRADELOG-FIXED-v6 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -103,8 +103,7 @@ body{font-family:var(--font-main);background:var(--bg-primary);color:var(--text-
 /* Data mode: hide journal equity curve cards so they don't bleed through */
 body.data-mode-open #eqChartCard,
 body.data-mode-open #eqChartCardW,
-body.data-mode-open #dailyView,
-body.data-mode-open #weeklyView {
+body.data-mode-open #dailyView {
   display: none !important;
 }
 body.data-mode-open #dayPopup {
@@ -730,7 +729,7 @@ var _supabase = null;
 <div class="sidebar-left" id="sideLeft" style="position:relative;">
   
   <div class="section-label" style="margin-top:18px;">Views</div>
-  <div class="nav-item" id="navDash" onclick="(function(){var d=document.getElementById('dashboardView');var dl=document.getElementById('dailyView');var wl=document.getElementById('weeklyView');if(d){d.style.display='block';}if(dl)dl.style.display='none';if(wl)wl.style.display='none';switchView('dashboard');renderDashboard();})()" style="color:var(--teal);cursor:pointer;">📊 Dashboard</div>
+  <div class="nav-item" id="navDash" onclick="switchView('dashboard')" style="color:var(--teal);cursor:pointer;">📊 Dashboard</div>
   <div class="nav-item active" id="navDaily" onclick="switchView('daily')">📅 Daily Calendar</div>
   <div class="nav-item" id="navWeekly" onclick="switchView('weekly')">📊 Weekly View</div>
   <div class="nav-item" id="navData" onclick="dtToggleDataPanel()" style="color:var(--purple);">🗃 Data Mode</div>
@@ -3611,18 +3610,12 @@ function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear(
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
 function switchView(v){
-  // If switching to calendar views, close data mode panel
-  if(v==='daily'||v==='weekly'||v==='dashboard'){
-    document.body.classList.remove('data-mode-open');
-    var dv=document.getElementById('dataView');
-    if(dv) dv.classList.remove('open');
-    var dt=document.getElementById('dataToggleThumb');
-    var tk=document.getElementById('dataToggleTrack');
-    if(dt){dt.style.left='2px';dt.style.background='var(--text-muted)';}
-    if(tk) tk.style.background='var(--bg-input)';
-  }
-  document.getElementById('dailyView').style.display=v==='daily'?'block':'none';
-  document.getElementById('weeklyView').style.display=v==='weekly'?'block':'none';
+  // For weekly/daily/dashboard: force display regardless of data-mode CSS
+  var daily=document.getElementById('dailyView');
+  var weekly=document.getElementById('weeklyView');
+  var dash=document.getElementById('dashboardView');
+  if(daily) daily.style.display=v==='daily'?'block':'none';
+  if(weekly) weekly.style.display=v==='weekly'?'block':'none';
   var dashEl = document.getElementById('dashboardView');
   if(dashEl) dashEl.style.display = v==='dashboard'?'block':'none';
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
@@ -8445,13 +8438,13 @@ function openRiskCalc(){
   overlay.appendChild(box); document.body.appendChild(overlay);
   document.getElementById('_rcClose').onclick = function(){ overlay.remove(); };
   document.getElementById('_rcCancel').onclick = function(){
-    // Reset risk fields to default (50)
+    // Cancel: restore risk fields to empty (clear) so auto-calc takes over
     var el1=document.getElementById('oRisk');
     var el2=document.getElementById('dtRisk');
-    if(el1){ el1.value='50'; el1.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof calcRiskLots==='function') calcRiskLots(); }
-    if(el2){ el2.value='50'; el2.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); }
+    if(el1){ el1.value=''; el1.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof calcRiskLots==='function') calcRiskLots(); }
+    if(el2){ el2.value=''; el2.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); }
     overlay.remove();
-    showToast('↩ รีเซ็ต Risk เป็น $50','info');
+    showToast('↩ ยกเลิก — ล้างค่า Risk แล้ว','info');
   };
   overlay.addEventListener('mousedown',function(e){ if(e.target===overlay) overlay.remove(); });
   function calcRisk(){
@@ -8468,25 +8461,23 @@ function openRiskCalc(){
   document.getElementById('_rcApply').onclick = function(){
     var risk = calcRisk();
     var applied = false;
-    // mDataTrade = Data Mode modal, mDay = Journal day modal (contains Add Entry)
-    var mDataTrade = document.getElementById('mDataTrade');
-    var mDay = document.getElementById('mDay');
-    var dtOpen = mDataTrade && mDataTrade.classList.contains('open');
-    var dayOpen = mDay && mDay.classList.contains('open');
-    if(dtOpen){
-      var riskEl = document.getElementById('dtRisk');
-      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
+    // Always try both fields - apply to whichever is visible/in DOM
+    var el1 = document.getElementById('oRisk');    // Add Entry Manual (inside mDay)
+    var el2 = document.getElementById('dtRisk');   // Data Mode modal (mDataTrade)
+    if(el1){
+      el1.value = risk.toFixed(2);
+      el1.dispatchEvent(new Event('input'));
+      el1.dispatchEvent(new Event('change'));
+      if(typeof calcAll==='function') calcAll();
+      if(typeof calcRiskLots==='function') calcRiskLots();
+      applied=true;
     }
-    if(dayOpen){
-      var riskEl2 = document.getElementById('oRisk');
-      if(riskEl2){ riskEl2.value = risk.toFixed(2); riskEl2.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof calcRiskLots==='function') calcRiskLots(); applied=true; }
-    }
-    if(!applied){
-      // Fallback: fill both fields
-      var el1 = document.getElementById('oRisk');
-      var el2 = document.getElementById('dtRisk');
-      if(el1){ el1.value = risk.toFixed(2); el1.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); applied=true; }
-      if(el2){ el2.value = risk.toFixed(2); el2.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
+    if(el2){
+      el2.value = risk.toFixed(2);
+      el2.dispatchEvent(new Event('input'));
+      el2.dispatchEvent(new Event('change'));
+      if(typeof dtCalcAll==='function') dtCalcAll();
+      applied=true;
     }
     overlay.remove();
     if(applied){
@@ -10845,9 +10836,20 @@ function dtFiltered(){
   var fEntryTime=gv('dtfEntryTime'); // เช่น "06:01-09:00"
   var fCloseTime=gv('dtfCloseTime')||''; // Close Time filter
   var src=[];
-  // Data trades
+  // Data trades — only load if datasets are selected
   if(_dtViewMode!=='port_only'){
-    DT.trades.forEach(function(t){ src.push(Object.assign({},t,{_src:'data'})); });
+    var _selDs = window._dtSelectedDatasets;
+    var _dsInitDone = window._dtDsInitialized;
+    DT.trades.forEach(function(t){
+      // If datasets initialized and some selected, filter by dataset_id
+      if(_dsInitDone && _selDs && _selDs.length > 0){
+        var tDs = t.dataset_id || 'default';
+        if(_selDs.indexOf(tDs) < 0) return; // skip if not in selected datasets
+      } else if(_dsInitDone && _selDs && _selDs.length === 0){
+        return; // all unchecked → show nothing
+      }
+      if(!t._deleted && !t._softDeleted) src.push(Object.assign({},t,{_src:'data'}));
+    });
   }
   // Portfolio trades — FIX: อ่านจาก localStorage ของทุก portfolio ที่ tick ไว้
   if(_dtViewMode==='port_only'||_dtViewMode==='combined'){
@@ -11219,15 +11221,35 @@ function dtDeleteRow(visIdx){
   if(!t||t._src!=='data'){showToast('ลบได้เฉพาะออเดอร์ Data Mode','error');return;}
   // ── FIX: capture _id ก่อน dtLoad เพื่อป้องกัน index shift ──
   var targetId=t._id;
-  showConfirm('ลบ Trade '+(t.asset||'')+(t.entry?' @ '+t.entry:'')+'?', function(){
-    // ลบจาก memory ก่อนเสมอ
+  // Show delete dialog: Soft Delete vs Hard Delete
+  var _delOverlay=document.createElement('div');
+  _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  var _delBox=document.createElement('div');
+  _delBox.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;padding:22px 24px;min-width:300px;max-width:380px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  _delBox.innerHTML='<div style="font-size:14px;font-weight:700;margin-bottom:8px;">🗑 ลบ Trade</div>'
+    +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">'+escHtml((t.asset||'')+' '+(t.entry?'@ '+t.entry:''))+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px;">'
+    +'<button id="_delSoft" style="padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);cursor:pointer;text-align:left;font-size:13px;">🙈 <strong>Soft Delete</strong> — ซ่อน แต่ยังอยู่ใน Database</button>'
+    +'<button id="_delHard" style="padding:10px;background:rgba(239,68,68,.15);border:1px solid var(--red);border-radius:8px;color:var(--red);cursor:pointer;text-align:left;font-size:13px;">💥 <strong>ลบถาวร</strong> — ลบออกจาก Database ทันที</button>'
+    +'<button id="_delCancel" style="padding:8px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:12px;">ยกเลิก</button>'
+    +'</div>';
+  _delOverlay.appendChild(_delBox);
+  document.body.appendChild(_delOverlay);
+  _delOverlay.querySelector('#_delCancel').onclick=function(){ _delOverlay.remove(); };
+  _delOverlay.querySelector('#_delSoft').onclick=function(){
+    _delOverlay.remove();
+    var realIdx=DT.trades.findIndex(function(x){return x._id===targetId;});
+    if(realIdx>=0){ DT.trades[realIdx]._deleted=true; DT.trades[realIdx]._softDeleted=true; }
+    dtSave(); dtRender(); showToast('🙈 ซ่อน Trade แล้ว (Soft Delete)','success');
+    if(_supabase && targetId){ sendSheet('softDeleteDataTrade',{_id:targetId, id:targetId}); }
+  };
+  _delOverlay.querySelector('#_delHard').onclick=function(){
+    _delOverlay.remove();
     var realIdx=DT.trades.findIndex(function(x){return x._id===targetId;});
     if(realIdx>=0) DT.trades.splice(realIdx,1);
-    dtSave(); dtRender(); showToast('ลบแล้ว','success');
-    if(_supabase && targetId){
-      sendSheet('deleteDataTrade',{_id:targetId, id:targetId});
-    }
-  });
+    dtSave(); dtRender(); showToast('💥 ลบถาวรแล้ว','success');
+    if(_supabase && targetId){ sendSheet('deleteDataTrade',{_id:targetId, id:targetId}); }
+  };
 }
 
 var _dtViewMode='data_only'; // 'data_only' | 'port_only' | 'combined'
@@ -13652,7 +13674,7 @@ async function saveDisplayName(){
   <button onclick="toggleMobileLeft()" id="_mbLeft"><span style="font-size:20px;">☰</span><span>Menu</span></button>
   <button onclick="switchView('daily')" id="_mbDaily" class="active"><span>📅</span><span>Daily</span></button>
   <button onclick="switchView('weekly')" id="_mbWeekly"><span>📆</span><span>Weekly</span></button>
-  <button onclick="(function(){var d=document.getElementById('dashboardView');var dl=document.getElementById('dailyView');var wl=document.getElementById('weeklyView');if(d){d.style.display='block';}if(dl)dl.style.display='none';if(wl)wl.style.display='none';switchView('dashboard');renderDashboard();})()" id="_mbDash"><span>📊</span><span>Dash</span></button>
+  <button onclick="switchView('dashboard')" id="_mbDash" ><span>📊</span><span>Dash</span></button>
   <button onclick="toggleMobileRight()" id="_mbRight"><span>✏️</span><span>Entry</span></button>
 </div>
 <div class="mobile-overlay" id="_mobileOverlay" onclick="closeMobileDrawers()"></div>
