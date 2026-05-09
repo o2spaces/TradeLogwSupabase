@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v2 -->
+<!-- TRADELOG-FIXED-v3 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -730,7 +730,7 @@ var _supabase = null;
 <div class="sidebar-left" id="sideLeft" style="position:relative;">
   
   <div class="section-label" style="margin-top:18px;">Views</div>
-  <div class="nav-item" id="navDash" onclick="switchView('dashboard')" style="color:var(--teal);">📊 Dashboard</div>
+  <div class="nav-item" id="navDash" onclick="(function(){var d=document.getElementById('dashboardView');var dl=document.getElementById('dailyView');var wl=document.getElementById('weeklyView');if(d){d.style.display='block';}if(dl)dl.style.display='none';if(wl)wl.style.display='none';switchView('dashboard');renderDashboard();})()" style="color:var(--teal);cursor:pointer;">📊 Dashboard</div>
   <div class="nav-item active" id="navDaily" onclick="switchView('daily')">📅 Daily Calendar</div>
   <div class="nav-item" id="navWeekly" onclick="switchView('weekly')">📊 Weekly View</div>
   <div class="nav-item" id="navData" onclick="dtToggleDataPanel()" style="color:var(--purple);">🗃 Data Mode</div>
@@ -9005,6 +9005,21 @@ async function renderDashboard(){
     ? allTrades.filter(function(t){ return selectedPorts.indexOf(t.portfolio)>=0; })
     : allTrades;
   if(!trades.length){ 
+    // Fallback: try Data Trades from localStorage
+    var dtFallback=[];
+    try{
+      if(typeof dtLoad==='function') dtLoad();
+      if(window.DT && DT.trades && DT.trades.length) dtFallback=DT.trades;
+    }catch(e){}
+    if(dtFallback.length){
+      var mapped=dtFallback.map(function(t){
+        return {portfolio:'Data',pnl:t.pnl||0,result:t.result||'',asset:t.asset||'',
+          mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
+          sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+      });
+      _renderDashboardHTML(el, mapped, [{id:'Data',name:'Data Trades'}], mapped);
+      return;
+    }
     el.innerHTML='<div style="padding:16px;">'
       +_renderPortSelector(ports, allTrades)
       +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในพอร์ตที่เลือก</div></div>'; 
@@ -13556,7 +13571,7 @@ async function saveDisplayName(){
   <button onclick="toggleMobileLeft()" id="_mbLeft"><span style="font-size:20px;">☰</span><span>Menu</span></button>
   <button onclick="switchView('daily')" id="_mbDaily" class="active"><span>📅</span><span>Daily</span></button>
   <button onclick="switchView('weekly')" id="_mbWeekly"><span>📆</span><span>Weekly</span></button>
-  <button onclick="switchView('dashboard')" id="_mbDash"><span>📊</span><span>Dash</span></button>
+  <button onclick="(function(){var d=document.getElementById('dashboardView');var dl=document.getElementById('dailyView');var wl=document.getElementById('weeklyView');if(d){d.style.display='block';}if(dl)dl.style.display='none';if(wl)wl.style.display='none';switchView('dashboard');renderDashboard();})()" id="_mbDash"><span>📊</span><span>Dash</span></button>
   <button onclick="toggleMobileRight()" id="_mbRight"><span>✏️</span><span>Entry</span></button>
 </div>
 <div class="mobile-overlay" id="_mobileOverlay" onclick="closeMobileDrawers()"></div>
