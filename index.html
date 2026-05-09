@@ -666,7 +666,7 @@ var _supabase = null;
       </div>
     </div>
     <div class="sheet-status"><div class="status-dot" id="sDot"></div><span id="sTxt">Offline</span><span id="_syncStatus" style="font-size:9px;color:var(--text-muted);margin-left:2px;"></span><span id="_offlineDot" style="display:none;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-left:3px;cursor:pointer;" title="มีข้อมูลรอ sync — คลิกเพื่อ retry" onclick="_offlineFlush()"></span></div>
-    <button class="btn-icon" onclick="toggleTheme()" title="สลับธีม Dark/Light" aria-label="Toggle theme">◑</button>
+
     <div id="userChip" class="user-chip" style="display:none;cursor:pointer;" onclick="openEditDisplayName()" title="คลิกเพื่อเปลี่ยนชื่อแสดงผล">
       <div class="user-avatar" id="userAvatar">?</div>
       <span id="userDisplayName" style="color:var(--text-primary);font-weight:500;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
@@ -1350,7 +1350,7 @@ var _supabase = null;
           <!-- Entry/Close Date & Time -->
           <div class="fg2">
             <div class="form-field"><label>Entry Date &amp; Time</label><input class="form-input" id="oEntryDate" type="datetime-local" oninput="calcTimeInPos();autoDetectSession()"></div>
-            <div class="form-field"><label>Close Date &amp; Time</label><input class="form-input" id="oCloseDate" type="datetime-local" oninput="calcTimeInPos();checkBEClose()"></div>
+            <div class="form-field"><label style="display:flex;align-items:center;justify-content:space-between;">Close Date &amp; Time <button type="button" onclick="document.getElementById('oCloseDate').value=document.getElementById('oEntryDate').value;calcTimeInPos();checkBEClose();" title="ใช้เวลาเดียวกับ Entry" style="font-size:9px;padding:1px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;line-height:1.4;">⏱ Time Entry</button></label><input class="form-input" id="oCloseDate" type="datetime-local" oninput="calcTimeInPos();checkBEClose()"></div>
           </div>
           <div class="fg3">
             <div class="form-field"><label>Entry</label><input class="form-input" id="oEntry" type="number" step="any" placeholder="1920.50" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()"></div>
@@ -5078,9 +5078,14 @@ document.addEventListener('paste',function(e){
     for(var i=0;i<items.length;i++){if(items[i].type.startsWith('image/')){e.preventDefault();var f=items[i].getAsFile();if(f){dtSetImg(f);showToast('📋 วางรูปจาก Clipboard แล้ว!','success');}return;}}
   }
 });;
-function procFile(file){var r=new FileReader();r.onload=function(e){S.upB64=e.target.result.split(',')[1];document.getElementById('upPreview').src=e.target.result;document.getElementById('upPreview').style.display='block';document.getElementById('upPrompt').style.display='none';var ua=document.getElementById('uploadArea');ua.classList.add('pasted');setTimeout(function(){ua.classList.remove('pasted');},700);};r.readAsDataURL(file);}
+function procFile(file){var r=new FileReader();r.onload=function(e){S.upB64=e.target.result.split(',')[1]; window._lastScannedImg=null;document.getElementById('upPreview').src=e.target.result;document.getElementById('upPreview').style.display='block';document.getElementById('upPrompt').style.display='none';var ua=document.getElementById('uploadArea');ua.classList.add('pasted');setTimeout(function(){ua.classList.remove('pasted');},700);};r.readAsDataURL(file);}
 async function doScan(){
   if(!S.upB64){showToast('กรุณาอัปโหลดรูปก่อน','error');return;}
+  // Prevent scanning the same image twice
+  var currentImg = S.upB64 ? S.upB64.substring(0,50) : '';
+  if(window._lastScannedImg && window._lastScannedImg === currentImg){
+    if(!confirm('รูปนี้ถูก Scan แล้ว ต้องการ Scan ซ้ำหรือไม่?')) return;
+  }
   var key=getKey();if(!key){showToast('กรุณาตั้งค่า API Key ก่อน','error');openAPI();return;}
   var btn=document.getElementById('scanBtn');btn.textContent='🔄 Scanning...';btn.disabled=true;
   var box=document.getElementById('scanResult');box.style.display='block';
@@ -5293,6 +5298,7 @@ async function doScan(){
       if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
     },200);
     showToast('✅ AI สแกน '+filled.length+' ช่องสำเร็จ','success');
+    window._lastScannedImg = currentImg;
 
   }catch(err){
     box.innerHTML='<span style="color:var(--red);">❌ Error: '+err.message+'</span>';
@@ -8251,6 +8257,21 @@ async function _doTradeSearch(query, resultsEl){
       .order('entry_date',{ascending:false}).limit(50);
     if(r.data) results = r.data;
   }
+  // Also search Data Trades (localStorage)
+  try {
+    var dtList = (window.DT && DT.trades) ? DT.trades : [];
+    if(!dtList.length){ dtLoad(); dtList = (window.DT && DT.trades)||[]; }
+    var dtResults = dtList.filter(function(t){
+      return (t.asset||'').toLowerCase().indexOf(q)>=0
+        || (t.code||'').toLowerCase().indexOf(q)>=0
+        || (t.mode||'').toLowerCase().indexOf(q)>=0
+        || (t.note||'').toLowerCase().indexOf(q)>=0
+        || (t.result||'').toLowerCase().indexOf(q)>=0;
+    }).slice(0,50).map(function(t){
+      return {id:t.id,portfolio:'[Data]',date:t.date||'',asset:t.asset||'',side:t.side||'',pnl:t.pnl||0,result:t.result||'',code:t.code||'',mode:t.mode||'',note:t.note||''};
+    });
+    results = results.concat(dtResults);
+  } catch(e){ console.warn('DT search failed',e); }
   if(!results.length){ resultsEl.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:30px;font-size:13px;">ไม่พบผลลัพธ์ สำหรับ "'+escHtml(query)+'"</div>'; return; }
   var html = '<div style="font-size:11px;color:var(--text-muted);padding:6px 8px;">พบ '+results.length+' รายการ</div>';
   var frag = document.createDocumentFragment();
@@ -8402,10 +8423,31 @@ function openRiskCalc(){
   calcRisk();
   document.getElementById('_rcApply').onclick = function(){
     var risk = calcRisk();
-    var riskEl = document.getElementById('oRisk')||document.getElementById('dtRisk');
-    if(riskEl){ riskEl.value = risk.toFixed(2); if(typeof calcAll==='function') calcAll(); if(typeof dtCalcAll==='function') dtCalcAll(); }
-    overlay.remove();
-    showToast('✅ ใส่ Risk $'+risk.toFixed(2)+' แล้ว','success');
+    var applied = false;
+    // Check which modal is currently open and apply to the correct risk field
+    var mDT = document.getElementById('mDT');
+    var mOrder = document.getElementById('mOrder');
+    var dtOpen = mDT && mDT.classList.contains('open');
+    var orderOpen = mOrder && mOrder.classList.contains('open');
+    if(dtOpen){
+      var riskEl = document.getElementById('dtRisk');
+      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
+    } else if(orderOpen) {
+      var riskEl = document.getElementById('oRisk');
+      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); applied=true; }
+    } else {
+      // Fallback: try both
+      var el1 = document.getElementById('oRisk');
+      var el2 = document.getElementById('dtRisk');
+      var riskEl = el1 || el2;
+      if(riskEl){ riskEl.value = risk.toFixed(2); riskEl.dispatchEvent(new Event('input')); if(typeof calcAll==='function') calcAll(); if(typeof dtCalcAll==='function') dtCalcAll(); applied=true; }
+    }
+    if(applied){
+      overlay.remove();
+      showToast('✅ ใส่ Risk $'+risk.toFixed(2)+' แล้ว','success');
+    } else {
+      showToast('❌ ไม่พบช่อง Risk กรุณาเปิด Add Trade ก่อน','error');
+    }
   };
   document.getElementById('_rcSave').onclick = function(){
     lsSet('tj_account_size', document.getElementById('_rcAcc').value);
@@ -8936,8 +8978,19 @@ if(!window._dashSelectedPorts) window._dashSelectedPorts = null; // null = all
 async function renderDashboard(){
   var el=document.getElementById('dashContent'); if(!el) return;
   el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">⏳ กำลังโหลด...</div>';
+  try {
   var uid=_authSession&&_authSession._sbUserId;
-  if(!_supabase||!uid){ el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">❌ กรุณาเชื่อมต่อ Supabase</div>'; return; }
+  if(!_supabase||!uid){
+    // Fallback: use localStorage trades
+    var localTrades=[];
+    Object.keys(S.trades||{}).forEach(function(dk){ (S.trades[dk]||[]).forEach(function(t){ localTrades.push(t); }); });
+    if(localTrades.length){
+      _renderDashboardHTML(el, localTrades, [], localTrades);
+    } else {
+      el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">❌ กรุณาเชื่อมต่อ Supabase หรือเพิ่ม Trade ก่อน</div>';
+    }
+    return;
+  }
   // Fetch Journal trades + portfolios only
   var [t1,t3]=await Promise.all([
     _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
@@ -8956,7 +9009,11 @@ async function renderDashboard(){
       +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในพอร์ตที่เลือก</div></div>'; 
     return; 
   }
-  _renderDashboardHTML(el, trades, ports, allTrades);
+    _renderDashboardHTML(el, trades, ports, allTrades);
+  } catch(e) {
+    el.innerHTML='<div style="text-align:center;color:var(--red);padding:40px;">❌ เกิดข้อผิดพลาด: '+e.message+'</div>';
+    console.error('renderDashboard error:', e);
+  }
 }
 
 function _renderPortSelector(ports, allTrades){
@@ -9987,12 +10044,16 @@ function dtSetImg(file){
     var prompt=document.getElementById('dtUpPrompt');
     if(prev){prev.src=ev.target.result;prev.style.display='block';}
     if(prompt)prompt.style.display='none';
-    DT._upB64=ev.target.result.split(',')[1];
+    DT._upB64=ev.target.result.split(',')[1]; window._lastDtScannedImg=null;
   };
   r.readAsDataURL(file);
 }
 async function dtDoScan(){
   if(!DT._upB64){showToast('กรุณาเลือกรูปก่อน','error');return;}
+  var _curDtImg = DT._upB64 ? DT._upB64.substring(0,50) : '';
+  if(window._lastDtScannedImg && window._lastDtScannedImg === _curDtImg){
+    if(!confirm('รูปนี้ถูก Scan แล้ว ต้องการ Scan ซ้ำหรือไม่?')) return;
+  }
   var btn=document.getElementById('dtScanBtn');
   if(btn){btn.disabled=true;btn.textContent='⏳ กำลัง Scan...';}
   var res=document.getElementById('dtScanResult');
@@ -10030,9 +10091,23 @@ async function dtDoScan(){
       if(d.pnl!=null&&d.pnl!==''){var pv2=parseFloat(d.pnl);if(!isNaN(pv2)){document.getElementById('dtPnl').value=pv2;filled.push({k:'P&L',v:pv2});}}
       // Result
       if(d.result&&d.result!==''){var rSel=document.getElementById('dtResult');if(rSel){rSel.value=d.result;filled.push({k:'Result',v:d.result});}}
-      // Entry/Close Time
-      if(d.entryTime&&d.entryTime!=='') filled.push({k:'Entry Time',v:d.entryTime});
-      if(d.closeTime&&d.closeTime!=='') filled.push({k:'Close Time',v:d.closeTime});
+      // Entry/Close DateTime — combine with entry date for datetime-local field
+      if(d.entryTime&&d.entryTime!==''){
+        var baseDate=document.getElementById('dtEntryDate').value;
+        var baseDatePart=baseDate?baseDate.substring(0,10):(new Date().toISOString().substring(0,10));
+        var fullEDT=baseDatePart+'T'+(d.entryTime.length===5?d.entryTime:d.entryTime.substring(0,5));
+        document.getElementById('dtEntryDate').value=fullEDT;
+        dtAutoSession(); dtCalcTimeInPos && dtCalcTimeInPos();
+        filled.push({k:'Entry Time',v:d.entryTime});
+      }
+      if(d.closeTime&&d.closeTime!==''){
+        var baseDate2=document.getElementById('dtEntryDate').value;
+        var baseDatePart2=baseDate2?baseDate2.substring(0,10):(new Date().toISOString().substring(0,10));
+        var fullCDT=baseDatePart2+'T'+(d.closeTime.length===5?d.closeTime:d.closeTime.substring(0,5));
+        document.getElementById('dtCloseDate').value=fullCDT;
+        dtCalcTimeInPos && dtCalcTimeInPos();
+        filled.push({k:'Close Time',v:d.closeTime});
+      }
       dtCalcAll();
       // Build pill display
       var pills=filled.map(function(f){
@@ -10044,7 +10119,8 @@ async function dtDoScan(){
       if(res) res.innerHTML=
         '<div style="margin-bottom:7px;font-size:11px;">✅ <strong>Scan สำเร็จ!</strong> กรอก <strong style="color:var(--green);">'+filled.length+'</strong> ช่อง</div>'
         +'<div style="display:flex;flex-wrap:wrap;gap:4px;line-height:1.8;">'+pills+'</div>';
-      showToast('✅ AI สแกน '+filled.length+' ช่องสำเร็จ','success');
+      window._lastDtScannedImg = _curDtImg;
+    showToast('✅ AI สแกน '+filled.length+' ช่องสำเร็จ','success');
     } else {
       if(res) res.innerHTML='<span style="color:var(--amber);">⚠ ไม่พบข้อมูล trade ในรูป</span>';
     }
@@ -10682,8 +10758,8 @@ function dtFiltered(){
   }
   // Portfolio trades — FIX: อ่านจาก localStorage ของทุก portfolio ที่ tick ไว้
   if(_dtViewMode==='port_only'||_dtViewMode==='combined'){
-    // กำหนดว่าจะดึง portfolio ไหนบ้าง
-    var portsToLoad=_dtSelectedPorts.length>0?_dtSelectedPorts:Object.keys(S.portfolios||{'default':{}});
+    // กำหนดว่าจะดึง portfolio ไหนบ้าง — ถ้า _dtSelectedPorts ว่าง แสดงว่าผู้ใช้ยกเลิกทั้งหมด → ไม่โหลด
+    var portsToLoad=_dtSelectedPorts.length>0?_dtSelectedPorts:[];
     portsToLoad.forEach(function(pid){
       var portTrades={};
       var _cached = lsGet('port_'+pid+'_t');
@@ -12477,7 +12553,7 @@ if(document.readyState==='loading'){
       <!-- Entry/Close Date & Time -->
       <div class="fg2">
         <div class="form-field"><label>Entry Date &amp; Time</label><input class="form-input" id="dtEntryDate" type="datetime-local" oninput="dtAutoSession();dtCalcTimeInPos()"></div>
-        <div class="form-field"><label>Close Date &amp; Time</label><input class="form-input" id="dtCloseDate" type="datetime-local" oninput="dtCalcTimeInPos()"></div>
+        <div class="form-field"><label style="display:flex;align-items:center;justify-content:space-between;">Close Date &amp; Time <button type="button" onclick="document.getElementById('dtCloseDate').value=document.getElementById('dtEntryDate').value;dtCalcTimeInPos();" title="ใช้เวลาเดียวกับ Entry" style="font-size:9px;padding:1px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;line-height:1.4;">⏱ Time Entry</button></label><input class="form-input" id="dtCloseDate" type="datetime-local" oninput="dtCalcTimeInPos()"></div>
       </div>
 
       <!-- Entry / TP / SL -->
