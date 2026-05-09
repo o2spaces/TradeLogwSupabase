@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v6 -->
+<!-- TRADELOG-FIXED-v7 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -3610,14 +3610,20 @@ function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear(
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
 function switchView(v){
-  // For weekly/daily/dashboard: force display regardless of data-mode CSS
+  // Hide dataView when switching to weekly/dashboard so it doesn't cover content
+  var dataView = document.getElementById('dataView');
+  if(v==='weekly' || v==='dashboard'){
+    if(dataView) dataView.style.zIndex = '-1';
+  } else {
+    if(dataView) dataView.style.zIndex = '10';
+  }
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
   var dash=document.getElementById('dashboardView');
   if(daily) daily.style.display=v==='daily'?'block':'none';
-  if(weekly) weekly.style.display=v==='weekly'?'block':'none';
+  if(weekly){ weekly.style.display=v==='weekly'?'block':'none'; weekly.style.position='relative'; weekly.style.zIndex='20'; }
   var dashEl = document.getElementById('dashboardView');
-  if(dashEl) dashEl.style.display = v==='dashboard'?'block':'none';
+  if(dashEl){ dashEl.style.display = v==='dashboard'?'block':'none'; dashEl.style.position='relative'; dashEl.style.zIndex='20'; }
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
   document.getElementById('btnWeekly').className='view-btn'+(v==='weekly'?' active':'');
   document.getElementById('navDaily').className='nav-item'+(v==='daily'?' active':'');
@@ -8460,7 +8466,10 @@ function openRiskCalc(){
   calcRisk();
   document.getElementById('_rcApply').onclick = function(){
     var risk = calcRisk();
+    if(!risk || risk <= 0){ showToast('⚠️ กรุณาใส่ค่า Account Size และ Risk %','error'); return; }
     var applied = false;
+    // Store globally so fields can pick it up
+    window._rcLastRisk = risk;
     // Always try both fields - apply to whichever is visible/in DOM
     var el1 = document.getElementById('oRisk');    // Add Entry Manual (inside mDay)
     var el2 = document.getElementById('dtRisk');   // Data Mode modal (mDataTrade)
@@ -8481,7 +8490,7 @@ function openRiskCalc(){
     }
     overlay.remove();
     if(applied){
-      showToast('✅ ใส่ Risk $'+risk.toFixed(2)+' แล้ว','success');
+      showToast('✅ ใส่ Risk $'+risk.toFixed(2)+' ลงใน Risk Field แล้ว — ตรวจสอบในฟอร์ม','success');
     } else {
       showToast('❌ ไม่พบช่อง Risk กรุณาเปิด Add Trade ก่อน','error');
     }
@@ -10840,13 +10849,22 @@ function dtFiltered(){
   if(_dtViewMode!=='port_only'){
     var _selDs = window._dtSelectedDatasets;
     var _dsInitDone = window._dtDsInitialized;
+    var _totalDs = (window.DS && DS.list) ? DS.list.length : 1;
     DT.trades.forEach(function(t){
-      // If datasets initialized and some selected, filter by dataset_id
-      if(_dsInitDone && _selDs && _selDs.length > 0){
-        var tDs = t.dataset_id || 'default';
-        if(_selDs.indexOf(tDs) < 0) return; // skip if not in selected datasets
-      } else if(_dsInitDone && _selDs && _selDs.length === 0){
-        return; // all unchecked → show nothing
+      // If datasets initialized and ALL unchecked → show nothing
+      if(_dsInitDone && _selDs && _selDs.length === 0){
+        return;
+      }
+      // If SUBSET selected (not all), filter by dataset_id
+      if(_dsInitDone && _selDs && _selDs.length > 0 && _selDs.length < _totalDs){
+        var tDs = t.dataset_id || '';
+        // If trade has no dataset_id, include it only if first/default dataset is selected
+        if(tDs === '' || tDs === 'default'){
+          var firstDs = DS && DS.list && DS.list[0] ? DS.list[0].id : 'default';
+          if(_selDs.indexOf(firstDs) < 0 && _selDs.indexOf('default') < 0) return;
+        } else {
+          if(_selDs.indexOf(tDs) < 0) return;
+        }
       }
       if(!t._deleted && !t._softDeleted) src.push(Object.assign({},t,{_src:'data'}));
     });
@@ -11403,7 +11421,11 @@ async function openPortSelectorModal(){
   var btn=document.createElement('button');
   btn.style.cssText='width:100%;background:var(--accent);color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-main);';
   btn.textContent='✓ ตกลง';
-  btn.addEventListener('click',function(){overlay.remove();});
+  btn.addEventListener('click',function(){
+    overlay.remove();
+    dtRender(); // Re-render after selection confirmed
+    updatePortSelectorLabel();
+  });
   box.appendChild(btn);
 
   overlay.appendChild(box);
