@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v13 -->
+<!-- TRADELOG-FIXED-v14 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -9035,15 +9035,23 @@ async function renderDashboard(){
   var el=document.getElementById('dashContent'); if(!el) return;
   el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">⏳ กำลังโหลด...</div>';
   try {
-    // ── 1. Load DT trades (localStorage) ──────────────────────
+    // ── 1. Load ALL DT trades from Supabase (unfiltered) ─────
     var dtTrades=[];
+    var dsNameMap = {};
     try{
-      if(typeof dtLoad==='function') dtLoad();
-      if(window.DT && DT.trades && DT.trades.length){
-        // Build dataset name lookup
-        var dsNameMap = {};
-        if(window.DS && DS.list) DS.list.forEach(function(d){ dsNameMap[d.id]=d.name; });
-        dtTrades=DT.trades.map(function(t){
+      var uid2=_authSession&&_authSession._sbUserId;
+      if(_supabase && uid2){
+        // Fetch ALL data_trades and ALL datasets for this user
+        var dtRes = await Promise.all([
+          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid2).eq('is_deleted',false),
+          _supabase.from('datasets').select('id,name').eq('user_id',uid2).eq('is_deleted',false)
+        ]);
+        var rawDT = dtRes[0].data||[];
+        var rawDS = dtRes[1].data||[];
+        rawDS.forEach(function(d){ dsNameMap[d.id]=d.name; });
+        if(!window.DS) window.DS={};
+        window.DS.list = rawDS;
+        dtTrades = rawDT.map(function(t){
           var dsId = t.dataset_id || '__DT_default__';
           var dsName = dsNameMap[dsId] || '📊 Data';
           return {portfolio:'__DS__'+dsId, _dsName:dsName,
@@ -9051,8 +9059,21 @@ async function renderDashboard(){
             mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
             sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
         });
+      } else {
+        // Fallback: use DT cache
+        if(typeof dtLoad==='function') dtLoad();
+        if(window.DS && DS.list) DS.list.forEach(function(d){ dsNameMap[d.id]=d.name; });
+        if(window.DT && DT.trades){
+          dtTrades=DT.trades.map(function(t){
+            var dsId=t.dataset_id||'__DT_default__';
+            return {portfolio:'__DS__'+dsId,_dsName:dsNameMap[dsId]||'📊 Data',
+              pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
+              mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
+              sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+          });
+        }
       }
-    }catch(e2){}
+    }catch(e2){ console.warn('DT dashboard load error',e2); }
 
     // ── 2. Load Journal trades + portfolios ────────────────────
     var journalTrades=[], ports=[];
@@ -9061,7 +9082,7 @@ async function renderDashboard(){
       try{
         var res=await Promise.all([
           _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
-          _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false)
+          _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false),
         ]);
         journalTrades=res[0].data||[];
         ports=res[1].data||[];
@@ -11486,9 +11507,12 @@ async function openPortSelectorModal(){
     overlay.remove();
     // Force reload from Supabase when dataset selection changes
     DT.trades = [];
-    if(typeof dtLoad==='function') dtLoad(true);
-    dtRender();
-    updatePortSelectorLabel();
+    // dtLoad is async — wait for it then render
+    var _dtReload = typeof dtLoad==='function' ? dtLoad(true) : Promise.resolve();
+    Promise.resolve(_dtReload).then(function(){
+      dtRender();
+      updatePortSelectorLabel();
+    }).catch(function(){ dtRender(); updatePortSelectorLabel(); });
   });
   box.appendChild(btn);
 
