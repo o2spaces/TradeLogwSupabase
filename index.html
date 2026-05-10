@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v10 -->
+<!-- TRADELOG-FIXED-v12 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -9086,6 +9086,13 @@ async function renderDashboard(){
     if(!trades.length){
       el.innerHTML='<div style="padding:16px;">'+_renderPortSelector(allPorts,allTrades)
         +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade — เลือกพอร์ตหรือเพิ่ม Trade ก่อน</div></div>';
+      // Wire delegation for empty state too
+      var pb2=el.querySelector('#_dashPortBar');
+      if(pb2) pb2.addEventListener('click',function(e){
+        var btn=e.target.closest('button');if(!btn)return;
+        if(btn.dataset.dashAll){_dashSelectAll();return;}
+        if(btn.dataset.dashPid){_dashTogglePort(decodeURIComponent(btn.dataset.dashPid));return;}
+      });
       return;
     }
     _renderDashboardHTML(el,trades,allPorts,allTrades);
@@ -9100,29 +9107,27 @@ function _renderPortSelector(ports, allTrades){
   var allIds = ports.map(function(p){return p.id;});
   var countMap = {};
   (allTrades||[]).forEach(function(t){ countMap[t.portfolio]=(countMap[t.portfolio]||0)+1; });
-  var wrapper = document.createElement('div');
-  wrapper.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;';
-  var lbl=document.createElement('span');
-  lbl.style.cssText='font-size:11px;color:var(--text-muted);white-space:nowrap;';
-  lbl.textContent='📁 พอร์ต:';
-  wrapper.appendChild(lbl);
   var allActive = !selected || selected.length===allIds.length;
-  var allBtn=document.createElement('button');
-  allBtn.textContent='ทั้งหมด';
-  allBtn.style.cssText='background:'+(allActive?'var(--purple)':'none')+';border:1px solid var(--purple);color:'+(allActive?'#fff':'var(--purple)')+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;';
-  allBtn.onclick=function(){ _dashSelectAll(); };
-  wrapper.appendChild(allBtn);
+  var wrapStyle = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;';
+  var html = '<div id="_dashPortBar" style="'+wrapStyle+'">';
+  html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">&#128193; พอร์ต:</span>';
+  var allBg = allActive ? 'var(--purple)' : 'none';
+  var allColor = allActive ? '#fff' : 'var(--purple)';
+  html += '<button data-dash-all="1" style="background:'+allBg+';border:1px solid var(--purple);color:'+allColor+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;">ทั้งหมด</button>';
   ports.forEach(function(p){
     var active = !selected || selected.indexOf(p.id)>=0;
     var cnt = countMap[p.id]||0;
-    var btn=document.createElement('button');
-    btn.textContent='📂 '+p.name+' ('+cnt+')';
-    btn.style.cssText='background:'+(active?'var(--accent-dim)':'none')+';border:1px solid '+(active?'var(--accent)':'var(--border)')+';color:'+(active?'var(--accent)':'var(--text-muted)')+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;';
-    btn.onclick=(function(pid){ return function(){ _dashTogglePort(pid); }; })(p.id);
-    wrapper.appendChild(btn);
+    var label = p.id==='__DT__' ? ('&#128202; '+p.name) : ('&#128193; '+p.name+' ('+cnt+')');
+    var bg = active ? 'var(--accent-dim)' : 'none';
+    var border = active ? 'var(--accent)' : 'var(--border)';
+    var color = active ? 'var(--accent)' : 'var(--text-muted)';
+    // Store port id in data attribute to avoid quoting issues
+    html += '<button data-dash-pid="'+encodeURIComponent(p.id)+'" style="background:'+bg+';border:1px solid '+border+';color:'+color+';border-radius:20px;font-size:11px;padding:2px 10px;cursor:pointer;">'+label+'</button>';
   });
-  return wrapper.outerHTML;
+  html += '</div>';
+  return html;
 }
+
 
 function _dashSelectAll(){
   window._dashSelectedPorts = null;
@@ -9205,6 +9210,16 @@ function _renderDashboardHTML(el, trades, ports, allTrades){
     +'</div>';
 
   el.innerHTML=html;
+  // Wire up port selector clicks via event delegation (avoids inline onclick quoting issues)
+  var portBar=el.querySelector('#_dashPortBar');
+  if(portBar){
+    portBar.addEventListener('click',function(e){
+      var btn=e.target.closest('button');
+      if(!btn) return;
+      if(btn.dataset.dashAll) { _dashSelectAll(); return; }
+      if(btn.dataset.dashPid) { _dashTogglePort(decodeURIComponent(btn.dataset.dashPid)); return; }
+    });
+  }
 }
 
 function _calcStreak(trades){
@@ -12464,6 +12479,12 @@ function dtToggleDataPanel(){
   if(_dtPanelOpen){
     panel.classList.add('open');
     document.body.classList.add('data-mode-open');
+    // Restore z-index so dataView shows above weekly/dashboard
+    panel.style.zIndex='10';
+    var wv=document.getElementById('weeklyView');
+    var dv=document.getElementById('dashboardView');
+    if(wv){wv.style.zIndex='';wv.style.position='';}
+    if(dv){dv.style.zIndex='';dv.style.position='';}
     if(track){track.style.background='var(--purple)';track.style.borderColor='var(--purple)';}
     if(thumb){thumb.style.left='18px';thumb.style.background='#fff';}
     if(label){label.style.color='var(--purple)';}
