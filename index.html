@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v14 -->
+<!-- TRADELOG-FIXED-v15 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -2314,7 +2314,8 @@ function _tradeFromRow(r){
     fiboLevel:     r.fibo_level    || '',
     note:          r.note          || '',
     imgLink:       r.img_link      || '',
-    is_deleted:    r.is_deleted    || false
+    is_deleted:    r.is_deleted    || false,
+    dataset_id:    r.dataset_id    || ''
   };
 }
 // Fees = Exchange/broker fee per lot (round trip)
@@ -10940,13 +10941,12 @@ function dtFiltered(){
       // If SUBSET selected (not all), filter by dataset_id
       if(_dsInitDone && _selDs && _selDs.length > 0 && _selDs.length < _totalDs){
         var tDs = t.dataset_id || '';
-        // If trade has no dataset_id, include it only if first/default dataset is selected
         if(tDs === '' || tDs === 'default'){
-          var firstDs = DS && DS.list && DS.list[0] ? DS.list[0].id : 'default';
-          if(_selDs.indexOf(firstDs) < 0 && _selDs.indexOf('default') < 0) return;
-        } else {
-          if(_selDs.indexOf(tDs) < 0) return;
+          // Trade has no dataset_id → assign to first dataset in DS.list
+          var firstDs = (window.DS && DS.list && DS.list[0]) ? DS.list[0].id : 'default';
+          tDs = firstDs;
         }
+        if(_selDs.indexOf(tDs) < 0) return;
       }
       if(!t._deleted && !t._softDeleted) src.push(Object.assign({},t,{_src:'data'}));
     });
