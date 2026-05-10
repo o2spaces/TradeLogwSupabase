@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v15 -->
+<!-- TRADELOG-FIXED-v16 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -845,7 +845,7 @@ var _supabase = null;
         <!-- ── Dataset Selector ── -->
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;" title="Dataset ที่จะบันทึก Trade ลง">📦 บันทึกลง:</span>
-          <select id="dsSelector" style="background:var(--bg-input);border:1px solid var(--purple);color:var(--text-primary);border-radius:20px;font-size:12px;padding:3px 10px;height:28px;max-width:160px;cursor:pointer;" title="เลือก Dataset ที่จะบันทึก Trade ลง">
+          <select id="dsSelector" onchange="dsSwitch(this.value)" style="background:var(--bg-input);border:1px solid var(--purple);color:var(--text-primary);border-radius:20px;font-size:12px;padding:3px 10px;height:28px;max-width:160px;cursor:pointer;" title="เลือก Dataset ที่จะบันทึก Trade ลง">
             <option value="default">Default</option>
           </select>
           <button onclick="dsOpenAdd()" title="สร้าง Dataset ใหม่" style="background:none;border:1px solid var(--purple);color:var(--purple);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">＋ ใหม่</button>
@@ -9460,6 +9460,9 @@ async function dsSwitch(id){
   if(DS.current === id) return;
   DS.current = id;
   DT.trades = []; // clear memory → dtLoad จะ fetch ใหม่
+  // Sync _dtSelectedDatasets so dtFiltered also respects the selected dataset
+  window._dtSelectedDatasets = [id];
+  window._dtDsInitialized = true;
   showToast('📦 เปลี่ยนเป็น Dataset: '+dsGetName(id), 'info');
   await dtLoad(true);
   dtRender();
@@ -9885,6 +9888,12 @@ async function dtLoad(forceReload){
         // ใช้ _dtSelectedDatasets ถ้ามีการเลือก หรือดึงทั้งหมด
         var q = _supabase.from('data_trades').select('*').eq('user_id',uid).eq('is_deleted',false);
         var selDs = window._dtSelectedDatasets;
+        // Also use DS.current as single-dataset filter when no multi-selection
+        if(!selDs || !selDs.length){
+          if(window.DS && DS.current && DS.current !== 'default'){
+            selDs = [DS.current];
+          }
+        }
         if(selDs && selDs.length){
           // filter by selected datasets
           if(selDs.length === 1){
