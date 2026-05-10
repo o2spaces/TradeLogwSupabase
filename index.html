@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v12 -->
+<!-- TRADELOG-FIXED-v13 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -8034,7 +8034,7 @@ function _renderEquityPerPortfolio(trades, ports){
         +'</svg>';
     }
     html += '<div style="background:var(--bg-input);border-radius:8px;padding:10px;border:1px solid var(--border);">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:2px;">📂 '+escHtml(p.name)+'</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:2px;">'+(p._isDT?'📊':'📂')+' '+escHtml(p.name)+'</div>'
       +'<div style="font-size:18px;font-weight:700;color:'+(pnl>=0?'var(--green)':'var(--red)')+';">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'</div>'
       +'<div style="font-size:10px;color:var(--text-muted);">'+portTrades.length+' trades • '+wr+'% WR • DD: -$'+Math.abs(maxDD).toFixed(0)+'</div>'
       +spark+'</div>';
@@ -9040,8 +9040,14 @@ async function renderDashboard(){
     try{
       if(typeof dtLoad==='function') dtLoad();
       if(window.DT && DT.trades && DT.trades.length){
+        // Build dataset name lookup
+        var dsNameMap = {};
+        if(window.DS && DS.list) DS.list.forEach(function(d){ dsNameMap[d.id]=d.name; });
         dtTrades=DT.trades.map(function(t){
-          return {portfolio:'__DT__',pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
+          var dsId = t.dataset_id || '__DT_default__';
+          var dsName = dsNameMap[dsId] || '📊 Data';
+          return {portfolio:'__DS__'+dsId, _dsName:dsName,
+            pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
             mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
             sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
         });
@@ -9071,7 +9077,16 @@ async function renderDashboard(){
 
     // ── 3. Build combined ports list ───────────────────────────
     var allPorts=ports.slice();
-    if(dtTrades.length) allPorts.push({id:'__DT__',name:'📊 Data Trades'});
+    // Add one port button per DT dataset
+    var dtPortSeen={};
+    dtTrades.forEach(function(t){
+      if(!dtPortSeen[t.portfolio]){
+        dtPortSeen[t.portfolio]=true;
+        var dsId = t.portfolio.replace('__DS__','');
+        var dsName = t._dsName || '📊 Data';
+        allPorts.push({id:t.portfolio, name:dsName, _isDT:true});
+      }
+    });
     window._allDashPorts=allPorts;
 
     // ── 4. Combine all trades ──────────────────────────────────
@@ -9117,7 +9132,8 @@ function _renderPortSelector(ports, allTrades){
   ports.forEach(function(p){
     var active = !selected || selected.indexOf(p.id)>=0;
     var cnt = countMap[p.id]||0;
-    var label = p.id==='__DT__' ? ('&#128202; '+p.name) : ('&#128193; '+p.name+' ('+cnt+')');
+    var isDT = p._isDT || p.id.indexOf('__DS__')===0;
+    var label = isDT ? ('&#128202; '+p.name+' ('+cnt+')') : ('&#128193; '+p.name+' ('+cnt+')');
     var bg = active ? 'var(--accent-dim)' : 'none';
     var border = active ? 'var(--accent)' : 'var(--border)';
     var color = active ? 'var(--accent)' : 'var(--text-muted)';
@@ -11468,7 +11484,10 @@ async function openPortSelectorModal(){
   btn.textContent='✓ ตกลง';
   btn.addEventListener('click',function(){
     overlay.remove();
-    dtRender(); // Re-render after selection confirmed
+    // Force reload from Supabase when dataset selection changes
+    DT.trades = [];
+    if(typeof dtLoad==='function') dtLoad(true);
+    dtRender();
     updatePortSelectorLabel();
   });
   box.appendChild(btn);
