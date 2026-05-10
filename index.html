@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v9 -->
+<!-- TRADELOG-FIXED-v10 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -1362,22 +1362,14 @@ var _supabase = null;
 
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
             <div class="form-field">
-              <label style="display:flex;align-items:center;gap:4px;">Risk ($) <span id="oRiskWarnDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;" title="Risk เกิน!"></span></label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+                <span style="display:flex;align-items:center;gap:4px;">Risk ($) <span id="oRiskWarnDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;" title="Risk เกิน!"></span></span>
+                <span style="display:flex;gap:4px;">
+                  <button type="button" id="oRiskSetDefault" onclick="(function(){var v=document.getElementById('oRisk').value;if(!v||isNaN(v)){showToast('ใส่ค่า Risk ก่อนนะ','error');return;}window._oDefaultRisk=parseFloat(v);localStorage.setItem('oDefaultRisk',v);showToast('✅ จำค่า Risk $'+parseFloat(v).toFixed(2),'success');var s=document.getElementById('oRiskSetDefault');if(s){s.style.background='var(--accent)';s.style.color='#fff';}})()" style="font-size:9px;padding:1px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;line-height:1.5;">💾 Set Default</button>
+                  <button type="button" id="oRiskForget" onclick="(function(){window._oDefaultRisk=null;localStorage.removeItem('oDefaultRisk');document.getElementById('oRisk').value='';calcRiskLots();showToast('🗑 ลืมค่า Risk แล้ว','info');var s=document.getElementById('oRiskSetDefault');if(s){s.style.background='';s.style.color='';}})()" style="font-size:9px;padding:1px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;line-height:1.5;">🗑 Forget</button>
+                </span>
+              </label>
               <input class="form-input" id="oRisk" type="number" step="any" placeholder="50" oninput="calcRiskLots()" style="transition:border-color .2s;">
-              <div style="display:flex;gap:4px;margin-top:4px;">
-                <button type="button" id="oRiskSetDefault"
-                  onclick="(function(){var v=document.getElementById('oRisk').value;if(!v||isNaN(v)){showToast('ใส่ค่า Risk ก่อนนะ','error');return;}window._oDefaultRisk=parseFloat(v);localStorage.setItem('oDefaultRisk',v);showToast('✅ จำค่า Risk $'+parseFloat(v).toFixed(2)+' สำหรับ Add Entry','success');document.getElementById('oRiskSetDefault').style.background='var(--accent)';document.getElementById('oRiskSetDefault').style.color='#fff';})()"
-                  title="จำค่า Risk นี้สำหรับออเดอร์ถัดไป"
-                  style="font-size:9px;padding:2px 7px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;white-space:nowrap;line-height:1.5;">
-                  💾 Set Default
-                </button>
-                <button type="button" id="oRiskForget"
-                  onclick="(function(){window._oDefaultRisk=null;localStorage.removeItem('oDefaultRisk');document.getElementById('oRisk').value='';calcRiskLots();showToast('🗑 ลืมค่า Default Risk แล้ว','info');document.getElementById('oRiskSetDefault').style.background='';document.getElementById('oRiskSetDefault').style.color='';})()"
-                  title="ลืมค่า Risk Default"
-                  style="font-size:9px;padding:2px 7px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;white-space:nowrap;line-height:1.5;">
-                  🗑 Forget
-                </button>
-              </div>
             </div>
             <div class="form-field"><label>Lots <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oLots" type="number" step="0.01" placeholder="1.00" oninput="calcAll()" onchange="calcAll()" onblur="calcAll()"></div>
             <div class="form-field"><label>Fees ($) <span style="font-size:9px;color:var(--amber)">(auto/edit)</span></label><input class="form-input" id="oFees" type="number" step="any" placeholder="auto" oninput="this.dataset.manualEdit='1';calcPnl()" onchange="calcPnl()"></div>
@@ -9043,55 +9035,63 @@ async function renderDashboard(){
   var el=document.getElementById('dashContent'); if(!el) return;
   el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">⏳ กำลังโหลด...</div>';
   try {
-  var uid=_authSession&&_authSession._sbUserId;
-  if(!_supabase||!uid){
-    // Fallback: use localStorage trades
-    var localTrades=[];
-    Object.keys(S.trades||{}).forEach(function(dk){ (S.trades[dk]||[]).forEach(function(t){ localTrades.push(t); }); });
-    if(localTrades.length){
-      _renderDashboardHTML(el, localTrades, [], localTrades);
-    } else {
-      el.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;">❌ กรุณาเชื่อมต่อ Supabase หรือเพิ่ม Trade ก่อน</div>';
-    }
-    return;
-  }
-  // Fetch Journal trades + portfolios only
-  var [t1,t3]=await Promise.all([
-    _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
-    _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false)
-  ]);
-  var allTrades=t1.data||[];
-  var ports=t3.data||[];
-  // filter by selected portfolios
-  var selectedPorts = window._dashSelectedPorts;
-  var trades = selectedPorts && selectedPorts.length
-    ? allTrades.filter(function(t){ return selectedPorts.indexOf(t.portfolio)>=0; })
-    : allTrades;
-  if(!trades.length){ 
-    // Fallback: try Data Trades from localStorage
-    var dtFallback=[];
+    // ── 1. Load DT trades (localStorage) ──────────────────────
+    var dtTrades=[];
     try{
       if(typeof dtLoad==='function') dtLoad();
-      if(window.DT && DT.trades && DT.trades.length) dtFallback=DT.trades;
-    }catch(e){}
-    if(dtFallback.length){
-      var mapped=dtFallback.map(function(t){
-        return {portfolio:'Data',pnl:t.pnl||0,result:t.result||'',asset:t.asset||'',
-          mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
-          sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+      if(window.DT && DT.trades && DT.trades.length){
+        dtTrades=DT.trades.map(function(t){
+          return {portfolio:'__DT__',pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
+            mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
+            sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+        });
+      }
+    }catch(e2){}
+
+    // ── 2. Load Journal trades + portfolios ────────────────────
+    var journalTrades=[], ports=[];
+    var uid=_authSession&&_authSession._sbUserId;
+    if(_supabase && uid){
+      try{
+        var res=await Promise.all([
+          _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
+          _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false)
+        ]);
+        journalTrades=res[0].data||[];
+        ports=res[1].data||[];
+      }catch(e3){ console.warn('Dashboard fetch error',e3); }
+    } else {
+      Object.keys(S.trades||{}).forEach(function(dk){
+        (S.trades[dk]||[]).forEach(function(t){ journalTrades.push(Object.assign({},t,{portfolio:dk})); });
       });
-      _renderDashboardHTML(el, mapped, [{id:'Data',name:'Data Trades'}], mapped);
+      Object.keys(S.portfolios||{}).forEach(function(pid){
+        ports.push({id:pid,name:(S.portfolios[pid]&&S.portfolios[pid].name)||pid});
+      });
+    }
+
+    // ── 3. Build combined ports list ───────────────────────────
+    var allPorts=ports.slice();
+    if(dtTrades.length) allPorts.push({id:'__DT__',name:'📊 Data Trades'});
+    window._allDashPorts=allPorts;
+
+    // ── 4. Combine all trades ──────────────────────────────────
+    var allTrades=journalTrades.concat(dtTrades);
+
+    // ── 5. Filter by selected ports ───────────────────────────
+    var selectedPorts=window._dashSelectedPorts;
+    var trades=selectedPorts&&selectedPorts.length
+      ? allTrades.filter(function(t){return selectedPorts.indexOf(t.portfolio)>=0;})
+      : allTrades;
+
+    if(!trades.length){
+      el.innerHTML='<div style="padding:16px;">'+_renderPortSelector(allPorts,allTrades)
+        +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade — เลือกพอร์ตหรือเพิ่ม Trade ก่อน</div></div>';
       return;
     }
-    el.innerHTML='<div style="padding:16px;">'
-      +_renderPortSelector(ports, allTrades)
-      +'<div style="text-align:center;color:var(--text-muted);padding:40px;">ยังไม่มี Trade ในพอร์ตที่เลือก</div></div>'; 
-    return; 
-  }
-    _renderDashboardHTML(el, trades, ports, allTrades);
+    _renderDashboardHTML(el,trades,allPorts,allTrades);
   } catch(e) {
     el.innerHTML='<div style="text-align:center;color:var(--red);padding:40px;">❌ เกิดข้อผิดพลาด: '+e.message+'</div>';
-    console.error('renderDashboard error:', e);
+    console.error('renderDashboard error:',e);
   }
 }
 
