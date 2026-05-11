@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v20 -->
+<!-- TRADELOG-FIXED-v21 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -31,7 +31,7 @@ body{font-family:var(--font-main);background:var(--bg-primary);color:var(--text-
 .topbar-right{display:flex;align-items:center;gap:7px;}
 .sheet-status{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);display:flex;align-items:center;gap:5px;}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);}
-.status-dot.connected{background:var(--green);animation:pulse 2s infinite;}
+.status-dot.connected{background:var(--green);}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .btn-icon{background:none;border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;width:30px;height:30px;border-radius:var(--radius-sm);font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
 .btn-icon:hover{border-color:var(--border-hover);color:var(--text-primary);}
@@ -401,7 +401,7 @@ body.data-mode-open #sideRight {
 .btn-save{width:100%;background:var(--accent);color:#fff;border:none;padding:8px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-main);margin-top:9px;}
 .btn-save:hover{background:var(--accent-hover);}
 /* MODALS */
-.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;display:none;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .15s;}
 .modal-backdrop.open{display:flex;opacity:1;pointer-events:all;}
 /* ── Data Mode: ยก modal ให้อยู่เหนือ dataView stacking context ── */
 body.data-mode-open .modal-backdrop{z-index:9000;}
@@ -533,7 +533,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(0.
 .auth-google-btn{width:100%;background:#fff;color:#3c4043;border:1px solid #dadce0;padding:9px 10px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font-main);transition:box-shadow .15s;display:flex;align-items:center;justify-content:center;gap:8px;}
 .auth-google-btn:hover{box-shadow:0 1px 6px rgba(0,0,0,.3);}
 /* ─── SETUP SHEET URL OVERLAY ─── */
-.setup-sheet-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:30px;width:440px;max-width:94vw;box-shadow:0 12px 48px rgba(0,0,0,.8);}
+.setup-sheet-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:30px;width:440px;max-width:94vw;box-shadow:0 4px 16px rgba(0,0,0,.5);}
 .setup-sheet-title{font-size:15px;font-weight:700;margin-bottom:6px;}
 .setup-sheet-sub{font-size:11px;color:var(--text-muted);margin-bottom:16px;line-height:1.8;}
 .setup-sheet-steps{background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:11px;color:var(--text-secondary);line-height:2;}
@@ -556,7 +556,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(0.
 .role-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.3px;}
 .role-badge.admin{background:rgba(168,85,247,.14);color:var(--purple);border:1px solid rgba(168,85,247,.3);}
 .role-badge.user{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(79,122,255,.3);}
-.online-pip{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;animation:pulse 2s infinite;}
+.online-pip{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;}
 
 /* ── MOBILE RESPONSIVE ───────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -844,8 +844,10 @@ var _supabase = null;
 
   <!-- DATA MODE PANEL (overlay on .main) -->
   <div id="dataView">
+    <!-- Sticky Header Wrapper -->
+    <div id="dtStickyHeader" style="position:sticky;top:0;z-index:50;background:var(--bg-primary);padding-bottom:8px;margin-bottom:0;">
     <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div style="font-size:15px;font-weight:600;color:var(--purple);display:flex;align-items:center;gap:8px;">🗃 Data Mode <span style="font-size:11px;font-weight:400;color:var(--text-muted);">เก็บข้อมูลแยกจากพอร์ต — รวมดูพอร์ตได้</span></div>
         <!-- ── Dataset Selector ── -->
@@ -933,6 +935,8 @@ var _supabase = null;
         </div>
       </div>
     </div>
+
+    </div><!-- /dtStickyHeader -->
 
     <!-- Winrate Stats Bar -->
     <div id="dtStatsBar" style="display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:14px;"></div>
@@ -2217,7 +2221,7 @@ async function adminDeleteUser(userId, username){
   var displayName = decodeURIComponent(username) || userId.slice(0,8);
   // in-app confirm
   var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.8);';
   box.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">🗑 ลบ User</div>'
@@ -3038,7 +3042,7 @@ function deletePortfolio(id,btn){
   var portName = (S.portfolios[id]&&S.portfolios[id].name)||id;
   // ── In-app confirm dialog ────────────────────────────────────────
   var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.8);';
   box.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">🗑 ลบพอร์ต</div>'
@@ -4218,6 +4222,11 @@ function closeM(id){
   var el=document.getElementById(id);
   if(!el) return;
   el.classList.remove('open');
+  // Remove global paste listener when DT modal closes
+  if(id==='mDataTrade' && window._dtGlobalPasteHandler){
+    document.removeEventListener('paste', window._dtGlobalPasteHandler);
+    window._dtGlobalPasteHandler=null;
+  }
   // Clear any inline styles forced by dtOpenAdd
   el.style.display='';
   el.style.opacity='';
@@ -4736,7 +4745,7 @@ function moveTrDate(i){if(_isReadOnly){showToast('🔒 โหมดดูเท�
   var existing=document.getElementById('moveDateModal');if(existing)existing.remove();
   var modal=document.createElement('div');
   modal.id='moveDateModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;';
   // Build a simple list of existing dates (sorted desc) for quick pick
   var existingDates=Object.keys(S.trades).filter(function(k){return k!==S.mKey&&(S.trades[k]||[]).length>=0;}).sort().reverse().slice(0,10);
   var quickPicks=existingDates.length?'<div style="margin-bottom:8px;"><div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;">วันที่มีออเดอร์อยู่แล้ว:</div><div style="display:flex;flex-wrap:wrap;gap:4px;" id="moveDateQuickPicks">'+existingDates.map(function(d){return '<button onclick="document.getElementById(\'moveDateInput\').value=\''+d+'\'" style="background:var(--bg-input);border:1px solid var(--border);color:var(--text-secondary);padding:3px 8px;border-radius:4px;font-size:10px;font-family:var(--font-mono);cursor:pointer;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-secondary)\'">'+d+'</button>';}).join('')+'</div></div>':'';
@@ -7013,7 +7022,7 @@ function openShareDashboard(){
   var portName=escHtml(S.portfolios[S.currentPortfolio]&&S.portfolios[S.currentPortfolio].name||'Default');
   var modal=document.createElement('div');
   modal.id='shareDashModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;';
   modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px;min-width:360px;max-width:500px;width:90vw;position:relative;">'
     +'<button onclick="document.getElementById(\'shareDashModal\').remove()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;line-height:1;" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text-muted)\'">✕</button>'
     +'<div style="font-size:14px;font-weight:600;margin-bottom:4px;">🔗 Share Dashboard</div>'
@@ -7341,7 +7350,7 @@ function openTopstepImport(){if(_isReadOnly){showToast('🔒 โหมดดู�
   var existing=document.getElementById('topstepImportModal');if(existing)existing.remove();
   var modal=document.createElement('div');
   modal.id='topstepImportModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;';
   modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px;min-width:360px;max-width:500px;position:relative;">'
     +'<button onclick="document.getElementById(\'topstepImportModal\').remove()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text-muted)\'">✕</button>'
     +'<div style="font-size:14px;font-weight:600;margin-bottom:4px;">📥 Import from Topstep</div>'
@@ -8096,7 +8105,7 @@ function openTradeTimeline(dateKey){
   var old = document.getElementById('_timelineModal'); if(old) old.remove();
   var overlay = document.createElement('div');
   overlay.id = '_timelineModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(560px,94vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.8);overflow:hidden;';
   var hdr = document.createElement('div');
@@ -8238,7 +8247,7 @@ function openTradeSearch(){
   var old = document.getElementById('_searchModal'); if(old){old.remove();return;}
   var overlay = document.createElement('div');
   overlay.id = '_searchModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;';
   var box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(600px,94vw);max-height:70vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.8);overflow:hidden;';
   // Search input
@@ -8363,9 +8372,9 @@ function openWeeklyGoals(){
   var old = document.getElementById('_goalModal'); if(old){old.remove();return;}
   var overlay = document.createElement('div');
   overlay.id = '_goalModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(440px,94vw);box-shadow:0 12px 48px rgba(0,0,0,.8);overflow:hidden;';
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(440px,94vw);box-shadow:0 4px 16px rgba(0,0,0,.5);overflow:hidden;';
   var goals = [
     {key:'maxLossDay', label:'Max Loss/Day ($)', icon:'🛑', type:'number'},
     {key:'minRR',      label:'Min R:R Target',   icon:'🎯', type:'number'},
@@ -8446,9 +8455,9 @@ function openRiskCalc(){
   var old = document.getElementById('_riskCalcModal'); if(old){old.remove();return;}
   var overlay = document.createElement('div');
   overlay.id = '_riskCalcModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(360px,94vw);box-shadow:0 12px 48px rgba(0,0,0,.8);overflow:hidden;';
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;width:min(360px,94vw);box-shadow:0 4px 16px rgba(0,0,0,.5);overflow:hidden;';
   var savedAcc = lsGet('tj_account_size')||'';
   var savedRiskPct = lsGet('tj_risk_pct')||'1';
   box.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">'
@@ -8686,9 +8695,9 @@ function openTradeTemplates(){
   var old=document.getElementById('_tmplModal'); if(old) old.remove();
   var overlay=document.createElement('div');
   overlay.id='_tmplModal';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var box=document.createElement('div');
-  box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,.5);';
   var hdr=document.createElement('div');
   hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);';
   hdr.innerHTML='<span style="font-size:14px;font-weight:600;">📋 Trade Templates</span>';
@@ -8977,7 +8986,7 @@ function _showShortcutsHelp(){
   var old=document.getElementById('_kbHelp'); if(old){old.remove();return;}
   var overlay=document.createElement('div');
   overlay.id='_kbHelp';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var rows=[
     ['Ctrl+S','บันทึก Entry'],['Ctrl+F','ค้นหา Trade'],
     ['Ctrl+G','Weekly Goals'],['Ctrl+Shift+B','Export Backup'],
@@ -8985,7 +8994,7 @@ function _showShortcutsHelp(){
     ['1 / 2 / 3','Daily / Weekly / Dashboard'],['D','เปิด/ปิด Data Mode'],
     ['?','แสดง Shortcuts'],['Esc','ปิด'],
   ];
-  var html='<div style="background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 12px 48px rgba(0,0,0,.8);">'
+  var html='<div style="background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 4px 16px rgba(0,0,0,.5);">'
     +'<div style="font-size:14px;font-weight:600;margin-bottom:12px;">⌨️ Keyboard Shortcuts</div>'
     +rows.map(function(r){
       return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">'
@@ -9756,9 +9765,9 @@ function dsOpenEdit(id){
   if(old2) old2.remove();
   var backdrop = document.createElement('div');
   backdrop.id = 'dsEditInlineModal';
-  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:10100;display:flex;align-items:center;justify-content:center;';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10100;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:340px;box-shadow:0 4px 16px rgba(0,0,0,.5);';
   var ttl = document.createElement('div');
   ttl.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:12px;';
   ttl.textContent = '✏️ แก้ชื่อ Dataset';
@@ -9801,9 +9810,9 @@ function dsAddTag(id){
   if(old2) old2.remove();
   var backdrop = document.createElement('div');
   backdrop.id = 'dsTagModal';
-  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:10100;display:flex;align-items:center;justify-content:center;';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10100;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:360px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  box.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-hover);border-radius:12px;padding:20px;width:360px;box-shadow:0 4px 16px rgba(0,0,0,.5);';
   var ttl = document.createElement('div');
   ttl.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:10px;';
   ttl.textContent = '🏷️ เพิ่ม Tag';
@@ -10349,6 +10358,23 @@ function dtOpenAdd(){
   try{
   DT.editIdx=-1;DT.side='Long';DT.emo=5;DT.disc=5;DT.sessions=[];DT._upB64=null;
   window._dtSLIgnored=false;
+  // Reset upload area visually so paste works for next trade
+  window._lastDtScannedImg=null;
+  var _dtUpPr=document.getElementById('dtUpPrompt'); if(_dtUpPr) _dtUpPr.style.display='';
+  var _dtUpPv=document.getElementById('dtUpPreview'); if(_dtUpPv){_dtUpPv.style.display='none';_dtUpPv.src='';}
+  var _dtUpAr=document.getElementById('dtUploadArea'); if(_dtUpAr) _dtUpAr.classList.remove('pasted');
+  // Global paste listener so Ctrl+V works regardless of focus
+  if(window._dtGlobalPasteHandler) document.removeEventListener('paste', window._dtGlobalPasteHandler);
+  window._dtGlobalPasteHandler=function(e){
+    var m=document.getElementById('mDataTrade');
+    if(!m||!m.classList.contains('open')) return;
+    var items=e.clipboardData&&e.clipboardData.items;
+    if(!items) return;
+    for(var i=0;i<items.length;i++){
+      if(items[i].type.startsWith('image/')){e.preventDefault();dtSetImg(items[i].getAsFile());return;}
+    }
+  };
+  document.addEventListener('paste', window._dtGlobalPasteHandler);
   var dtSessEl=document.getElementById('dtSession');if(dtSessEl)dtSessEl.value='';
   document.getElementById('mDataTradeTitle').textContent='＋ เพิ่ม Trade (Data Mode)';
   document.getElementById('dtSaveBtn').textContent='✓ บันทึก Trade';
@@ -11393,9 +11419,9 @@ function dtDeleteRow(visIdx){
   var targetId=t._id;
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
-  _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
   var _delBox=document.createElement('div');
-  _delBox.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;padding:22px 24px;min-width:300px;max-width:380px;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  _delBox.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;padding:22px 24px;min-width:300px;max-width:380px;box-shadow:0 4px 16px rgba(0,0,0,.5);';
   _delBox.innerHTML='<div style="font-size:14px;font-weight:700;margin-bottom:8px;">🗑 ลบ Trade</div>'
     +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">'+escHtml((t.asset||'')+' '+(t.entry?'@ '+t.entry:''))+'</div>'
     +'<div style="display:flex;flex-direction:column;gap:10px;">'
@@ -11440,11 +11466,11 @@ async function openPortSelectorModal(){
   // Overlay
   var overlay=document.createElement('div');
   overlay.id='_portSelectModal';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;';
 
   // Dialog box
   var box=document.createElement('div');
-  box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;padding:20px;min-width:320px;max-width:420px;width:90vw;box-shadow:0 12px 48px rgba(0,0,0,.8);';
+  box.style.cssText='background:var(--bg-card);border:1px solid var(--border-hover);border-radius:14px;padding:20px;min-width:320px;max-width:420px;width:90vw;box-shadow:0 4px 16px rgba(0,0,0,.5);';
 
   // Title
   var title=document.createElement('div');
@@ -12774,7 +12800,7 @@ if(document.readyState==='loading'){
 <!-- ═══ Image Fullscreen Overlay (body-level, above all modals) ═══ -->
 <div id="ndImgOverlay" style="display:none;position:fixed;inset:0;width:100vw;height:100vh;background:#000;z-index:99999;" onclick="ndCloseOverlay();">
   <img id="ndImgOverlayImg" style="width:100vw;height:100vh;object-fit:contain;display:block;cursor:zoom-out;">
-  <button onclick="event.stopPropagation();ndCloseOverlay();" style="position:fixed;top:14px;right:16px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.3);color:#fff;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:100000;backdrop-filter:blur(4px);">✕</button>
+  <button onclick="event.stopPropagation();ndCloseOverlay();" style="position:fixed;top:14px;right:16px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.3);color:#fff;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:100000;">✕</button>
 </div>
 <!-- ═══ DATA MODE — Add/Edit Trade Modal ═══ -->
 <div class="modal-backdrop" id="mDataTrade">
