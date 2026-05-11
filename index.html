@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v16 -->
+<!-- TRADELOG-FIXED-v18 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -9442,6 +9442,10 @@ async function dsLoad(){
       // ถ้าเคยลบแล้ว → ไม่สร้างกลับมา
     }
   }catch(e){ console.warn('[dsLoad]', e.message); }
+  // Initialize DS.current if not set
+  if(!DS.current || !DS.list.find(function(d){ return d.id===DS.current; })){
+    DS.current = DS.list.length > 0 ? DS.list[0].id : 'default';
+  }
   dsRenderSelector();
 }
 
@@ -9879,6 +9883,12 @@ async function dsRename(id, btn){
 // ══════════════════════════════════════════════════════════════════
 
 async function dtLoad(forceReload){
+  // Force reload when dataset changes
+  if(window._dtLastLoadedDs !== undefined && window._dtLastLoadedDs !== (DS.current||'all')){
+    DT.trades = [];
+    forceReload = true;
+  }
+  window._dtLastLoadedDs = DS.current || 'all';
   // ถ้ามี Supabase และ memory ว่าง (หรือ force) → ดึงจาก Supabase
   if(_supabase && (forceReload || !DT.trades || !DT.trades.length)){
     try{
@@ -10947,15 +10957,32 @@ function dtFiltered(){
       if(_dsInitDone && _selDs && _selDs.length === 0){
         return;
       }
-      // If SUBSET selected (not all), filter by dataset_id
-      if(_dsInitDone && _selDs && _selDs.length > 0 && _selDs.length < _totalDs){
+      // Filter by dataset - use DS.current as primary filter, _dtSelectedDatasets as secondary
+      var activeDsId = (window.DS && DS.current) ? DS.current : null;
+      if(activeDsId && activeDsId !== 'default'){
+        // Single dataset mode (via dropdown) - strict filter
         var tDs = t.dataset_id || '';
         if(tDs === '' || tDs === 'default'){
-          // Trade has no dataset_id → assign to first dataset in DS.list
           var firstDs = (window.DS && DS.list && DS.list[0]) ? DS.list[0].id : 'default';
           tDs = firstDs;
         }
-        if(_selDs.indexOf(tDs) < 0) return;
+        if(tDs !== activeDsId){
+          // Check if overridden by _dtSelectedDatasets (multi-select)
+          if(_dsInitDone && _selDs && _selDs.length > 1){
+            if(_selDs.indexOf(tDs) < 0) return;
+          } else if(_dsInitDone && _selDs && _selDs.length === 1 && _selDs[0] !== activeDsId){
+            if(_selDs.indexOf(tDs) < 0) return;
+          } else if(!_dsInitDone || !_selDs || !_selDs.length){
+            return; // strict DS.current filter
+          }
+        }
+      } else if(_dsInitDone && _selDs && _selDs.length > 0 && _selDs.length < _totalDs){
+        var tDs2 = t.dataset_id || '';
+        if(tDs2 === '' || tDs2 === 'default'){
+          var firstDs2 = (window.DS && DS.list && DS.list[0]) ? DS.list[0].id : 'default';
+          tDs2 = firstDs2;
+        }
+        if(_selDs.indexOf(tDs2) < 0) return;
       }
       if(!t._deleted && !t._softDeleted) src.push(Object.assign({},t,{_src:'data'}));
     });
@@ -11514,9 +11541,17 @@ async function openPortSelectorModal(){
   btn.textContent='✓ ตกลง';
   btn.addEventListener('click',function(){
     overlay.remove();
+    // Sync DS.current with first selected dataset (or first in list)
+    if(window._dtSelectedDatasets && _dtSelectedDatasets.length === 1){
+      DS.current = _dtSelectedDatasets[0];
+      dsRenderSelector();
+    } else if(window._dtSelectedDatasets && _dtSelectedDatasets.length > 1){
+      // Multiple selected - update dropdown to show first one
+      DS.current = _dtSelectedDatasets[0];
+      dsRenderSelector();
+    }
     // Force reload from Supabase when dataset selection changes
     DT.trades = [];
-    // dtLoad is async — wait for it then render
     var _dtReload = typeof dtLoad==='function' ? dtLoad(true) : Promise.resolve();
     Promise.resolve(_dtReload).then(function(){
       dtRender();
