@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v18 -->
+<!-- TRADELOG-FIXED-v20 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -38,6 +38,7 @@ body{font-family:var(--font-main);background:var(--bg-primary);color:var(--text-
 .btn-primary{background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-main);transition:background .15s;}
 .btn-primary:hover{background:var(--accent-hover);}
 .layout{display:grid;grid-template-columns:256px 1fr 286px;height:calc(100vh - 94px);transition:grid-template-columns .25s;}
+body.data-mode-open .layout{grid-template-columns:256px 1fr 0px;}
 .layout.left-collapsed{grid-template-columns:0px 1fr 286px;}
 .layout.right-collapsed{grid-template-columns:256px 1fr 0px;}
 .layout.left-collapsed.right-collapsed{grid-template-columns:0px 1fr 0px;}
@@ -118,6 +119,11 @@ body.data-mode-open #sidebarBtnRight {
   opacity:0 !important; pointer-events:none !important;
 }
 body.data-mode-open .portfolio-bar {
+  display:none !important;
+}
+/* Hide right sidebar in data mode to prevent content bleed */
+body.data-mode-open .sidebar-right,
+body.data-mode-open #sideRight {
   display:none !important;
 }
 
@@ -1377,7 +1383,7 @@ var _supabase = null;
           </div>
           <div id="riskWarnBar" style="display:none;background:var(--red-dim);border:1px solid var(--red);border-radius:var(--radius-sm);padding:5px 9px;font-size:10px;color:var(--red);margin-bottom:7px;align-items:center;justify-content:space-between;gap:8px;"><span id="riskWarnMsg">⚠️ SL ระยะเกิน Risk ที่ตั้งไว้! ตรวจสอบ Lot Size</span><button onclick="dismissRiskWarn()" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:var(--font-main);flex-shrink:0;">เพิกเฉย ✕</button></div>
           <div class="fg2">
-            <div class="form-field"><label>Close Price</label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()" onchange="calcPnl();checkBEClose()" onblur="calcPnl();checkBEClose()"></div>
+            <div class="form-field"><label style="display:flex;align-items:center;justify-content:space-between;"><span>Close Price</span><span style="display:flex;gap:3px;"><button type="button" onclick="(function(){var v=document.getElementById('oEntry').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;">Entry</button><button type="button" onclick="(function(){var v=document.getElementById('oTP').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;">TP</button><button type="button" onclick="(function(){var v=document.getElementById('oSL').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:rgba(239,68,68,.15);border:1px solid var(--red);border-radius:6px;color:var(--red);cursor:pointer;">SL</button></span></label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()" onchange="calcPnl();checkBEClose()" onblur="calcPnl();checkBEClose()"></div>
             <div class="form-field"><label>P&L ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oPnl" type="number" step="any" placeholder="0.00" oninput="updateResult()"></div>
           </div>
           <div class="fg2">
@@ -3616,20 +3622,25 @@ function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear(
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
 function switchView(v){
-  // Hide dataView when switching to weekly/dashboard so it doesn't cover content
   var dataView = document.getElementById('dataView');
-  if(v==='weekly' || v==='dashboard'){
-    if(dataView) dataView.style.zIndex = '-1';
-  } else {
-    if(dataView) dataView.style.zIndex = '10';
-  }
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
-  var dash=document.getElementById('dashboardView');
-  if(daily) daily.style.display=v==='daily'?'block':'none';
-  if(weekly){ weekly.style.display=v==='weekly'?'block':'none'; weekly.style.position='relative'; weekly.style.zIndex='20'; }
   var dashEl = document.getElementById('dashboardView');
-  if(dashEl){ dashEl.style.display = v==='dashboard'?'block':'none'; dashEl.style.position='relative'; dashEl.style.zIndex='20'; }
+  // Hide all views first
+  if(daily) daily.style.display='none';
+  if(weekly){ weekly.style.display='none'; weekly.style.position=''; weekly.style.zIndex=''; }
+  if(dashEl){ dashEl.style.display='none'; dashEl.style.position=''; dashEl.style.zIndex=''; }
+  // Show the requested view above dataView
+  if(v==='daily'){
+    if(daily) daily.style.display='block';
+    if(dataView) dataView.style.zIndex='10';
+  } else if(v==='weekly'){
+    if(weekly){ weekly.style.display='block'; weekly.style.position='relative'; weekly.style.zIndex='20'; }
+    if(dataView) dataView.style.zIndex='-1';
+  } else if(v==='dashboard'){
+    if(dashEl){ dashEl.style.display='block'; dashEl.style.position='relative'; dashEl.style.zIndex='20'; }
+    if(dataView) dataView.style.zIndex='-1';
+  }
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
   document.getElementById('btnWeekly').className='view-btn'+(v==='weekly'?' active':'');
   document.getElementById('navDaily').className='nav-item'+(v==='daily'?' active':'');
@@ -10210,23 +10221,44 @@ async function dtDoScan(){
   var res=document.getElementById('dtScanResult');
   if(res){res.style.display='block';res.innerHTML='<span style="color:var(--text-muted);">🔍 กำลังวิเคราะห์ด้วย '+S.prov.toUpperCase()+'...</span>';}
   var prompt=[
-    'You are a trading screenshot OCR expert. Extract trade data from this chart image.',
-    'Return ONLY raw JSON, no markdown, no explanation.',
+    'You are an expert trading screenshot OCR assistant. Analyze this chart carefully.',
+    'Return ONLY raw JSON. No markdown. No explanation.',
     '',
-    'Rules:',
-    '1. ASSET: instrument name without "!" e.g. "MNQ1", "NQ1"',
+    '=== EXTRACTION RULES ===',
+    '',
+    '1. ASSET: instrument name WITHOUT "!" e.g. "MNQ1", "NQ1", "GC1"',
+    '',
     '2. SIDE: "Long" or "Short"',
-    '3. ENTRY/TP/SL: price numbers only',
-    '4. ENTRY DATE & TIME: Look at the BOTTOM X-AXIS for BLUE highlighted timestamp boxes.',
-    '   The LEFTMOST blue marker = entry time.',
-    '   Thai month: ม.ค.=01 ก.พ.=02 มี.ค.=03 เม.ย.=04 พ.ค.=05 มิ.ย.=06 ก.ค.=07 ส.ค.=08 ก.ย.=09 ต.ค.=10 พ.ย.=11 ธ.ค.=12',
-    '   Year: "26"=2026 "25"=2025',
-    '   Format: "YYYY-MM-DDTHH:MM" e.g. "2026-03-10T09:42"',
-    '5. CLOSE DATE & TIME: Look for the SECOND (rightmost) blue marker on X-axis.',
-    '   Same format: "YYYY-MM-DDTHH:MM". Return "" if only one marker.',
-    '6. PNL: profit/loss number (negative for loss)',
+    '   - Green/blue box or "Long position" title → Long',
+    '   - Red/pink box or "Short position" title → Short',
     '',
-    'Return: {"asset":"","side":"Long","entry":0,"tp":0,"sl":0,"pnl":null,"result":"","entry_datetime":"","close_datetime":""}'
+    '3. ENTRY PRICE: look for "Entry price" label in popup, or "Entry" labeled line on chart',
+    '',
+    '4. TP (Take Profit): "Profit level" section → "Price" field (NOT Ticks)',
+    '   Example: if popup shows Ticks=180, Price=25154 → tp=25154',
+    '',
+    '5. SL (Stop Loss): "Stop level" section → "Price" field (NOT Ticks)',
+    '   Example: if popup shows Ticks=9, Price=25106.75 → sl=25106.75',
+    '',
+    '6. LOTS: look for "Lot size" or "QTY" field in popup. Return number only.',
+    '',
+    '7. ENTRY DATE & TIME — CRITICAL:',
+    '   Look at the BOTTOM X-AXIS for BLUE/HIGHLIGHTED timestamp boxes.',
+    '   The LEFTMOST blue marker = entry time.',
+    '   Read date from the blue box label directly. Examples:',
+    '   - "Mon 13 Apr 26 16:49:55" → "2026-04-13T16:49"',
+    '   - "09:42" → combine with visible date on chart',
+    '   Thai months: ม.ค.=01 ก.พ.=02 มี.ค.=03 เม.ย.=04 พ.ค.=05 มิ.ย.=06 ก.ค.=07 ส.ค.=08 ก.ย.=09 ต.ค.=10 พ.ย.=11 ธ.ค.=12',
+    '   Format: "YYYY-MM-DDTHH:MM" e.g. "2026-04-13T16:49"',
+    '',
+    '8. CLOSE DATE & TIME — CRITICAL:',
+    '   Look for the SECOND (rightmost) blue marker on X-axis — this is the close/target time.',
+    '   Example: "Mon 13 Apr 26 18:00:20" → "2026-04-13T18:00"',
+    '   Return "" ONLY if there is truly no second marker visible.',
+    '',
+    '9. PNL: profit/loss number if shown (negative for loss). null if not shown.',
+    '',
+    'Return: {"asset":"","side":"Long","entry":0,"tp":0,"sl":0,"lots":1,"pnl":null,"result":"","entry_datetime":"","close_datetime":""}'
   ].join('\n');
   try{
     var text=await callVision(prompt, DT._upB64);
@@ -10256,6 +10288,8 @@ async function dtDoScan(){
       if(d.tp!=null&&d.tp!==''){var tv=parseFloat(d.tp);if(!isNaN(tv)){document.getElementById('dtTP').value=tv;filled.push({k:'TP',v:tv});}}
       // SL
       if(d.sl!=null&&d.sl!==''){var sv=parseFloat(d.sl);if(!isNaN(sv)){document.getElementById('dtSL2').value=sv;filled.push({k:'SL',v:sv});}}
+      // Lots
+      if(d.lots!=null&&d.lots!==''){var lv=parseFloat(d.lots);if(!isNaN(lv)&&lv>0){var lotsEl=document.getElementById('dtLots');if(lotsEl){lotsEl.value=lv;if(typeof dtCalcAll==='function')dtCalcAll();filled.push({k:'Lots',v:lv});}}}
       // P&L
       if(d.pnl!=null&&d.pnl!==''){var pv2=parseFloat(d.pnl);if(!isNaN(pv2)){document.getElementById('dtPnl').value=pv2;filled.push({k:'P&L',v:pv2});}}
       // Result
@@ -12570,8 +12604,10 @@ function dtToggleDataPanel(){
     panel.style.zIndex='10';
     var wv=document.getElementById('weeklyView');
     var dv=document.getElementById('dashboardView');
-    if(wv){wv.style.zIndex='';wv.style.position='';}
-    if(dv){dv.style.zIndex='';dv.style.position='';}
+    var dl=document.getElementById('dailyView');
+    if(wv){wv.style.zIndex='';wv.style.position='';wv.style.display='none';}
+    if(dv){dv.style.zIndex='';dv.style.position='';dv.style.display='none';}
+    if(dl){dl.style.display='none';}
     if(track){track.style.background='var(--purple)';track.style.borderColor='var(--purple)';}
     if(thumb){thumb.style.left='18px';thumb.style.background='#fff';}
     if(label){label.style.color='var(--purple)';}
@@ -12869,7 +12905,17 @@ if(document.readyState==='loading'){
 
       <!-- Close Price + P&L -->
       <div class="fg2">
-        <div class="form-field"><label>Close Price</label><input class="form-input" id="dtClose" type="number" step="any" placeholder="0.00" oninput="dtCalcAll()"></div>
+        <div class="form-field">
+          <label style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Close Price</span>
+            <span style="display:flex;gap:3px;">
+              <button type="button" onclick="(function(){var v=document.getElementById('dtEntry').value;if(v){document.getElementById('dtClose').value=v;dtCalcAll();}})()" style="font-size:9px;padding:1px 5px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;">Entry</button>
+              <button type="button" onclick="(function(){var v=document.getElementById('dtTP').value;if(v){document.getElementById('dtClose').value=v;dtCalcAll();}})()" style="font-size:9px;padding:1px 5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;">TP</button>
+              <button type="button" onclick="(function(){var v=document.getElementById('dtSL2').value;if(v){document.getElementById('dtClose').value=v;dtCalcAll();}})()" style="font-size:9px;padding:1px 5px;background:rgba(239,68,68,.15);border:1px solid var(--red);border-radius:6px;color:var(--red);cursor:pointer;">SL</button>
+            </span>
+          </label>
+          <input class="form-input" id="dtClose" type="number" step="any" placeholder="0.00" oninput="dtCalcAll()">
+        </div>
         <div class="form-field"><label>P&amp;L ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="dtPnl" type="number" step="any" placeholder="auto" style="font-weight:600;"></div>
       </div>
 
