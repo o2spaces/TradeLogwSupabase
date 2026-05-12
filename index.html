@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v21 -->
+<!-- TRADELOG-FIXED-v22 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -18,7 +18,7 @@
 [data-theme="light"]{--bg-primary:#f0f2f7;--bg-secondary:#e4e7f0;--bg-card:#fff;--bg-input:#f5f7fc;--border:#d0d5e8;--border-hover:#a0a8c8;--text-primary:#1a1e2a;--text-secondary:#4a5068;--text-muted:#8b90a0;--accent:#3b6aee;--accent-hover:#2a55dd;--accent-dim:rgba(59,106,238,.1);--green:#14a064;--green-dim:rgba(20,160,100,.1);--red:#c8283c;--red-dim:rgba(200,40,60,.1);}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:var(--font-main);background:var(--bg-primary);color:var(--text-primary);min-height:100vh;}
-.topbar{background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:0 14px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
+.topbar{background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:0 14px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;overflow:hidden;}
 .logo{font-weight:600;font-size:15px;display:flex;align-items:center;gap:7px;}
 .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
 .topbar-center{display:flex;gap:0px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:3px;}
@@ -212,7 +212,7 @@ body.data-mode-open #sideRight {
 /* ให้ text-align ทำงานใน li */
 #noteDayEditor li[style*="text-align"]{list-style-position:inside;padding-left:0;}
 .main{overflow-y:auto;padding:14px;transition:padding .25s;position:relative;}
-#dataView{position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);padding:14px;z-index:10;display:none;overflow-y:auto;}
+#dataView{position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);padding:0 14px 14px;z-index:10;display:none;overflow-y:auto;}
 #dataView.open{display:block;}
 .layout.left-collapsed .main{ padding-left:28px; }
 .layout.right-collapsed .main{ padding-right:28px; }
@@ -845,7 +845,7 @@ var _supabase = null;
   <!-- DATA MODE PANEL (overlay on .main) -->
   <div id="dataView">
     <!-- Sticky Header Wrapper -->
-    <div id="dtStickyHeader" style="position:sticky;top:0;z-index:50;background:var(--bg-primary);padding-bottom:8px;margin-bottom:0;">
+    <div id="dtStickyHeader" style="position:sticky;top:0;z-index:50;background:var(--bg-primary);padding-bottom:8px;margin-bottom:0;box-shadow:0 2px 8px var(--bg-primary);border-bottom:1px solid var(--border);">
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -10992,7 +10992,8 @@ function _dtLazyLoadPortTrades(pid){
 }
 
 function dtFiltered(){
-  dtLoad();
+  // Note: dtLoad() is called by dsSwitch/OK button BEFORE dtRender/dtFiltered
+  // Do NOT call dtLoad() here as it's async and would use stale data
   function gv(id){ return (document.getElementById(id)||{}).value||''; }
   var fAsset=gv('dtfAsset');
   var fResult=gv('dtfResult');
