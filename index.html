@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v22 -->
+<!-- TRADELOG-FIXED-v23 -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -2278,7 +2278,12 @@ function _tradeFromRow(r){
   // compute day + entryTime from entry_date if not stored
   var _DAYS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var _edate = r.entry_date || r.date || '';
-  var _day   = r.day || (_edate ? _DAYS[new Date(_edate.substring(0,10)+'T12:00').getDay()]||'' : '');
+  // Always compute day from date - r.day may be stale or missing
+  var _dayFromDate = '';
+  if(_edate){
+    try{ _dayFromDate = _DAYS[new Date(_edate.substring(0,10)+'T12:00').getDay()]||''; }catch(e){}
+  }
+  var _day = _dayFromDate || r.day || '';
   var _etime = r.entryTime || (_edate && _edate.length>=16 ? _edate.substring(11,16) : '');
   var _sess  = r.sessions || r.session || '';
   return {
@@ -11153,6 +11158,16 @@ function dtFiltered(){
       }
     }
     return true;
+  }).sort(function(a,b){
+    // Sort by entry_date + date ascending (oldest first = row #1 is oldest)
+    var da = a.entryDate || a.date || '';
+    var db = b.entryDate || b.date || '';
+    if(da < db) return -1;
+    if(da > db) return 1;
+    // Secondary: entryTime
+    var ta = a.entryTime || '';
+    var tb = b.entryTime || '';
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
   });
 }
 
