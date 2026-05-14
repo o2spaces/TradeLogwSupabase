@@ -2657,20 +2657,31 @@ async function syncFromSheet(onDone){
         // entryTime: extract HH:MM from entry_date datetime string
         var _em = r.entry_date ? String(r.entry_date).match(/[T ]\s*(\d{1,2}:\d{2})/) : null;
         t.entryTime  = _em ? _em[1] : '';
+        t._entryDateRaw = r.entry_date ? String(r.entry_date).substring(0,16) : (r.date||'');
         // GAP 4 FIX: emotion/discipline stored as int in trades table → map to emo/disc
         t.emo        = r.emotion   != null ? parseInt(r.emotion)    : 5;
         t.disc       = r.discipline!= null ? parseInt(r.discipline) : 5;
         // session: stored as sessions column (comma-separated)
         t.session    = r.sessions || '';
-        // day: compute from date
-        t.day        = r.date ? DT_DAYS[new Date(r.date).getDay()] : '';
+        // day: compute from date → fallback to entry_date substring
+        var _dayRaw = r.date || (r.entry_date ? String(r.entry_date).substring(0,10) : '');
+        if(_dayRaw){
+          try{
+            // force midday to avoid timezone flip
+            var _dayDt = new Date(_dayRaw.substring(0,10)+'T12:00:00');
+            t.day = isNaN(_dayDt.getTime()) ? '' : (DT_DAYS[_dayDt.getDay()]||'');
+          }catch(e){ t.day=''; }
+        } else { t.day=''; }
         // zoneMit: DB has no zone_mit column — store in note field convention or leave blank
         t.zoneMit    = '';
         t.portfolio  = r.portfolio || S.currentPortfolio;
         return t;
       });
       DT.trades.sort(function(a,b){
-        return (a.date+(a.entryTime||''))<(b.date+(b.entryTime||''))?-1:1;
+        // Sort by full entry_date datetime string (most accurate)
+        var _aKey = a._entryDateRaw || (a.date+(a.entryTime?'T'+a.entryTime:''));
+        var _bKey = b._entryDateRaw || (b.date+(b.entryTime?'T'+b.entryTime:''));
+        return _aKey < _bKey ? -1 : _aKey > _bKey ? 1 : 0;
       });
     } else if(!dtRes.error) {
       // No data_trades in DB yet — keep whatever is in memory (don't overwrite with empty)
@@ -10889,7 +10900,10 @@ function dtParseSheetData(raw){
     trades.push({
       _id:'imp_'+dateOnly+'_'+(entryTime||'')+'_'+(entry||'')+'_'+(g(row,'asset')||'')+'_'+i,
       date:dateOnly,
-      day:day||DT_DAYS[new Date(dateOnly).getDay()],
+      day:(function(){
+        if(day) return day;
+        try{ var _d=new Date(dateOnly+'T12:00:00'); return isNaN(_d)?'':(DT_DAYS[_d.getDay()]||''); }catch(e){return '';}
+      })(),
       session:g(row,'session'),
       asset:g(row,'asset'),
       side:side,
@@ -11002,6 +11016,13 @@ function dtFiltered(){
   function gv(id){ return (document.getElementById(id)||{}).value||''; }
   var fAsset=gv('dtfAsset');
   var fResult=gv('dtfResult');
+  // Ensure every trade has day set (defensive fix for dataset switch)
+  DT.trades.forEach(function(t){
+    if(!t.day){
+      var _raw = (t._entryDateRaw||t.date||'').substring(0,10);
+      if(_raw){ try{ var _d=new Date(_raw+'T12:00:00'); t.day=isNaN(_d)?'':(DT_DAYS[_d.getDay()]||''); }catch(e){} }
+    }
+  });
   var fDay=gv('dtfDay');
   var fSession=gv('dtfSession');
   var fCode=gv('dtfCode');
