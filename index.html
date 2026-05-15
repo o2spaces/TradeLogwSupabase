@@ -1,4 +1,4 @@
-<!-- TRADELOG-FIXED-v23 -->
+<!-- TRADELOG-FIXED-v23b -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -2657,31 +2657,20 @@ async function syncFromSheet(onDone){
         // entryTime: extract HH:MM from entry_date datetime string
         var _em = r.entry_date ? String(r.entry_date).match(/[T ]\s*(\d{1,2}:\d{2})/) : null;
         t.entryTime  = _em ? _em[1] : '';
-        t._entryDateRaw = r.entry_date ? String(r.entry_date).substring(0,16) : (r.date||'');
         // GAP 4 FIX: emotion/discipline stored as int in trades table → map to emo/disc
         t.emo        = r.emotion   != null ? parseInt(r.emotion)    : 5;
         t.disc       = r.discipline!= null ? parseInt(r.discipline) : 5;
         // session: stored as sessions column (comma-separated)
         t.session    = r.sessions || '';
-        // day: compute from date → fallback to entry_date substring
-        var _dayRaw = r.date || (r.entry_date ? String(r.entry_date).substring(0,10) : '');
-        if(_dayRaw){
-          try{
-            // force midday to avoid timezone flip
-            var _dayDt = new Date(_dayRaw.substring(0,10)+'T12:00:00');
-            t.day = isNaN(_dayDt.getTime()) ? '' : (DT_DAYS[_dayDt.getDay()]||'');
-          }catch(e){ t.day=''; }
-        } else { t.day=''; }
+        // day: compute from date
+        t.day        = r.date ? DT_DAYS[new Date(r.date).getDay()] : '';
         // zoneMit: DB has no zone_mit column — store in note field convention or leave blank
         t.zoneMit    = '';
         t.portfolio  = r.portfolio || S.currentPortfolio;
         return t;
       });
       DT.trades.sort(function(a,b){
-        // Sort by full entry_date datetime string (most accurate)
-        var _aKey = a._entryDateRaw || (a.date+(a.entryTime?'T'+a.entryTime:''));
-        var _bKey = b._entryDateRaw || (b.date+(b.entryTime?'T'+b.entryTime:''));
-        return _aKey < _bKey ? -1 : _aKey > _bKey ? 1 : 0;
+        return (a.date+(a.entryTime||''))<(b.date+(b.entryTime||''))?-1:1;
       });
     } else if(!dtRes.error) {
       // No data_trades in DB yet — keep whatever is in memory (don't overwrite with empty)
@@ -10900,10 +10889,7 @@ function dtParseSheetData(raw){
     trades.push({
       _id:'imp_'+dateOnly+'_'+(entryTime||'')+'_'+(entry||'')+'_'+(g(row,'asset')||'')+'_'+i,
       date:dateOnly,
-      day:(function(){
-        if(day) return day;
-        try{ var _d=new Date(dateOnly+'T12:00:00'); return isNaN(_d)?'':(DT_DAYS[_d.getDay()]||''); }catch(e){return '';}
-      })(),
+      day:day||DT_DAYS[new Date(dateOnly).getDay()],
       session:g(row,'session'),
       asset:g(row,'asset'),
       side:side,
@@ -11016,13 +11002,6 @@ function dtFiltered(){
   function gv(id){ return (document.getElementById(id)||{}).value||''; }
   var fAsset=gv('dtfAsset');
   var fResult=gv('dtfResult');
-  // Ensure every trade has day set (defensive fix for dataset switch)
-  DT.trades.forEach(function(t){
-    if(!t.day){
-      var _raw = (t._entryDateRaw||t.date||'').substring(0,10);
-      if(_raw){ try{ var _d=new Date(_raw+'T12:00:00'); t.day=isNaN(_d)?'':(DT_DAYS[_d.getDay()]||''); }catch(e){} }
-    }
-  });
   var fDay=gv('dtfDay');
   var fSession=gv('dtfSession');
   var fCode=gv('dtfCode');
@@ -11180,9 +11159,9 @@ function dtFiltered(){
     }
     return true;
   }).sort(function(a,b){
-    // Sort by entry_date + date ascending (oldest first = row #1 is oldest)
-    var da = a.entryDate || a.date || '';
-    var db = b.entryDate || b.date || '';
+    // Sort by date + entryTime ascending (oldest first)
+    var da = a.date || a.entryDate || '';
+    var db = b.date || b.entryDate || '';
     if(da < db) return -1;
     if(da > db) return 1;
     // Secondary: entryTime
@@ -11293,12 +11272,21 @@ function dtRender(){
     // แปลง date เป็น DD/MM/YYYY
     var displayDate=t.date||'';
     if(displayDate){var dp=displayDate.split('-');if(dp.length===3) displayDate=dp[2]+'/'+dp[1]+'/'+dp[0];}
+    // Compute Day from t.date or t.entryDate (always fresh, never trust cached t.day)
+    var _rowDay = t.day || '';
+    var _rowDateSrc = t.date || (t.entryDate ? t.entryDate.substring(0,10) : '');
+    if(_rowDateSrc && !_rowDay){
+      try{ _rowDay = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(_rowDateSrc+'T12:00').getDay()]||''; }catch(e){}
+    } else if(_rowDateSrc) {
+      // Re-verify day matches date (fixes stale cached day)
+      try{ _rowDay = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(_rowDateSrc+'T12:00').getDay()]||_rowDay; }catch(e){}
+    }
     var rowBg=isWin?'rgba(46,204,138,0.09)':'';
     var rowHoverBg=isWin?'rgba(46,204,138,0.16)':'var(--bg-secondary)';
     return '<tr style="border-bottom:1px solid var(--border);background:'+rowBg+';transition:background .1s;" onmouseenter="this.style.background=\''+rowHoverBg+'\';" onmouseleave="this.style.background=\''+rowBg+'\';">'
       +'<td style="padding:6px 10px;color:var(--text-muted);">'+(i+1)+'</td>'
       +'<td style="padding:6px;white-space:nowrap;font-family:var(--font-mono);font-size:10px;">'+displayDate+'</td>'
-      +'<td style="padding:6px;font-size:10px;color:var(--text-muted);">'+( t.day||'')+'</td>'
+      +'<td style="padding:6px;font-size:10px;color:var(--text-muted);">'+_rowDay+'</td>'
       +'<td style="padding:6px;font-size:10px;color:var(--text-muted);">'+(t.session||'')+'</td>'
       +'<td style="padding:6px;font-weight:600;font-size:11px;">'+(t.asset||'-')+'</td>'
       +'<td style="padding:6px;text-align:center;"><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(t.side==='Long'?'rgba(46,204,138,0.15)':'rgba(255,77,106,0.15)')+';color:'+sideColor+';">'+(t.side||'-')+'</span></td>'
