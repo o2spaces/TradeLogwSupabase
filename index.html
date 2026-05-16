@@ -18,7 +18,7 @@
 [data-theme="light"]{--bg-primary:#f0f2f7;--bg-secondary:#e4e7f0;--bg-card:#fff;--bg-input:#f5f7fc;--border:#d0d5e8;--border-hover:#a0a8c8;--text-primary:#1a1e2a;--text-secondary:#4a5068;--text-muted:#8b90a0;--accent:#3b6aee;--accent-hover:#2a55dd;--accent-dim:rgba(59,106,238,.1);--green:#14a064;--green-dim:rgba(20,160,100,.1);--red:#c8283c;--red-dim:rgba(200,40,60,.1);}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:var(--font-main);background:var(--bg-primary);color:var(--text-primary);min-height:100vh;}
-.topbar{background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:0 14px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;overflow:hidden;}
+.topbar{background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:0 14px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;overflow:visible;}
 .logo{font-weight:600;font-size:15px;display:flex;align-items:center;gap:7px;}
 .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
 .topbar-center{display:flex;gap:0px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:3px;}
@@ -663,7 +663,6 @@ var _supabase = null;
   <div class="topbar-center">
     <button class="view-btn active" id="btnDaily" onclick="switchView('daily')">📅 Daily</button>
     <button class="view-btn" id="btnWeekly" onclick="switchView('weekly')">📊 Weekly</button>
-    <button class="view-btn" id="btnDash" onclick="switchView('dashboard')">📊 Dashboard</button>
   </div>
   <div class="topbar-right">
     <div onclick="dtToggleDataPanel()" id="btnDataToggle" title="เปิด/ปิด Data Mode" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:20px;transition:all .2s;background:none;user-select:none;">
@@ -3631,9 +3630,7 @@ function dk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate(
 function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();}
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
-var _activeView = 'daily';
 function switchView(v){
-  _activeView = v;
   var dataView = document.getElementById('dataView');
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
@@ -3655,8 +3652,6 @@ function switchView(v){
   }
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
   document.getElementById('btnWeekly').className='view-btn'+(v==='weekly'?' active':'');
-  var btnDash = document.getElementById('btnDash');
-  if(btnDash) btnDash.className='view-btn'+(v==='dashboard'?' active':'');
   document.getElementById('navDaily').className='nav-item'+(v==='daily'?' active':'');
   document.getElementById('navWeekly').className='nav-item'+(v==='weekly'?' active':'');
   var navDash = document.getElementById('navDash');
@@ -12693,11 +12688,6 @@ function dtToggleDataPanel(){
     (async function(){ await dsLoad(); await dtLoad(false); dtRender(); })();
   } else {
     panel.classList.remove('open');
-    panel.style.zIndex = '';
-    panel.style.display = 'none';
-    // Restore settings menu button if it was hidden
-    var menuBtnWrap = document.getElementById('menuBtn');
-    if(menuBtnWrap && menuBtnWrap.parentElement) menuBtnWrap.parentElement.style.display = '';
     if(track){track.style.background='var(--bg-input)';track.style.borderColor='var(--border)';}
     if(thumb){thumb.style.left='2px';thumb.style.background='var(--text-muted)';}
     if(label){label.style.color='var(--text-muted)';}
@@ -12716,11 +12706,15 @@ function dtToggleDataPanel(){
     updateSidebarBtnRight&&updateSidebarBtnRight();
     // Reset pending filter restore
     window._dtPendingFilterRestore=null;
-    // Restore the previously active view (daily/weekly/dashboard)
-    var restoreView = typeof _activeView !== 'undefined' ? _activeView : 'daily';
-    switchView(restoreView);
-    // Rebuild Chart.js charts
-    setTimeout(function(){ drawEQ(); drawEQW(); }, 100);
+    // Restore the last-active view (daily / weekly / dashboard)
+    setTimeout(function(){
+      var curView = 'daily';
+      var btnW = document.getElementById('btnWeekly');
+      var navD = document.getElementById('navDash');
+      if(btnW && btnW.classList.contains('active')) curView = 'weekly';
+      else if(navD && navD.classList.contains('active')) curView = 'dashboard';
+      switchView(curView);
+    }, 50);
   }
 }
 
