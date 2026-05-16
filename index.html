@@ -3630,7 +3630,9 @@ function dk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate(
 function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();}
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
+var _activeView = 'daily';
 function switchView(v){
+  _activeView = v;
   var dataView = document.getElementById('dataView');
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
@@ -12704,8 +12706,15 @@ function dtToggleDataPanel(){
     if(layout2){ layout2.classList.remove('left-collapsed','right-collapsed'); }
     updateSidebarBtnLeft&&updateSidebarBtnLeft();
     updateSidebarBtnRight&&updateSidebarBtnRight();
+    // Restore Settings (⚙) button visibility
+    var menuBtn2=document.getElementById('menuBtn');
+    if(menuBtn2 && menuBtn2.parentElement) menuBtn2.parentElement.style.display='';
+    // Reset dataView z-index so it no longer covers other views
+    panel.style.zIndex='';
     // Reset pending filter restore
     window._dtPendingFilterRestore=null;
+    // Restore the active view immediately
+    switchView(_activeView || 'daily');
     // Rebuild Chart.js charts
     setTimeout(function(){ drawEQ(); drawEQW(); }, 100);
   }
