@@ -692,7 +692,7 @@ var _supabase = null;
           <div class="drop-item" onclick="loadFromFile();closeMenu()">📂 Load from file</div>
           <div class="drop-item" onclick="exportCSV();closeMenu()">📊 Export CSV</div>
           <div class="drop-item" onclick="importCSV();closeMenu()">📥 Import CSV (Exness / MT5)</div>
-          <div class="drop-item" onclick="openTopstepImport();closeMenu()">📥 Import from Topstep</div>
+          <div class="drop-item" onclick="openFundedImport();closeMenu()">📥 Import Funded</div>
           <div style="height:1px;background:var(--border);margin:3px 0;"></div>
           <div class="drop-cat">AI COACH</div>
           <div class="drop-item" onclick="openAI();closeMenu()">🤖 Open AI Coach</div>
@@ -7351,156 +7351,445 @@ function checkSharedUrl(){
 }
 
 // ─── IMPORT FROM TOPSTEP CSV ───
-function openTopstepImport(){if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
-  var existing=document.getElementById('topstepImportModal');if(existing)existing.remove();
-  var modal=document.createElement('div');
-  modal.id='topstepImportModal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;';
-  modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px;min-width:360px;max-width:500px;position:relative;">'
-    +'<button onclick="document.getElementById(\'topstepImportModal\').remove()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text-muted)\'">✕</button>'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:4px;">📥 Import from Topstep</div>'
-    +'<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">อัพโหลดไฟล์ trades_export.csv จาก Topstep — ระบบจะสร้าง Entry ให้อัตโนมัติ</div>'
-    +'<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:10px;line-height:1.8;color:var(--text-secondary);">'
+// ══════════════════════════════════════════════════════════
+// IMPORT FUNDED — Topstep / Apex(Rithmic) / Apex(Tradovate)
+//                  Lucid(Rithmic) / Lucid(Tradovate)
+// ══════════════════════════════════════════════════════════
+var _fundedImportData = [];
+var _fundedBroker = 'topstep';
+
+function openFundedImport(){
+  if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
+  var existing = document.getElementById('fundedImportModal');
+  if(existing) existing.remove();
+
+  var BROKERS = [
+    {id:'topstep',    label:'Topstep',          fmt:'trades_export.csv'},
+    {id:'apex_rith',  label:'Apex (Rithmic)',    fmt:'Order_History.csv'},
+    {id:'apex_trad',  label:'Apex (Tradovate)',  fmt:'Coming soon'},
+    {id:'lucid_rith', label:'Lucid (Rithmic)',   fmt:'Coming soon'},
+    {id:'lucid_trad', label:'Lucid (Tradovate)', fmt:'Coming soon'},
+  ];
+
+  var brokerTabs = BROKERS.map(function(b){
+    var disabled = (b.fmt === 'Coming soon') ? ' style="opacity:.45;cursor:not-allowed;" title="Coming soon"' : '';
+    return '<button onclick="selectFundedBroker(\''+b.id+'\')" id="ftab_'+b.id+'" class="funded-tab"'+disabled+'>'+b.label+'</button>';
+  }).join('');
+
+  var fieldMaps = {
+    topstep: '<div><span style="color:var(--text-muted);">ContractName</span> → Asset</div>'
+      +'<div><span style="color:var(--text-muted);">EnteredAt / ExitedAt</span> → Entry / Close DateTime</div>'
+      +'<div><span style="color:var(--text-muted);">EntryPrice / ExitPrice</span> → Entry / Close Price</div>'
+      +'<div><span style="color:var(--text-muted);">PnL (+)</span> → TP &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL (-)</span> → SL</div>'
+      +'<div><span style="color:var(--text-muted);">Fees</span> → Commission &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL − Fees</span> → Net P&L</div>'
+      +'<div><span style="color:var(--text-muted);">Size</span> → Lots &nbsp;|&nbsp; <span style="color:var(--text-muted);">Type</span> → Long/Short</div>'
+      +'<div><span style="color:var(--text-muted);">TradeDuration</span> → Time in Position</div>',
+    apex_rith: '<div><span style="color:var(--text-muted);">Product</span> → Asset</div>'
+      +'<div><span style="color:var(--text-muted);">Last Fill Time</span> → DateTime (Entry / Exit)</div>'
+      +'<div><span style="color:var(--text-muted);">Limit Price / Stop-Trigger Price</span> → Fill Price</div>'
+      +'<div><span style="color:var(--text-muted);">Buy/Sell + FIFO pairing</span> → Long / Short</div>'
+      +'<div><span style="color:var(--text-muted);">Closed P&L (gross)</span> → P&L คำนวณ</div>'
+      +'<div><span style="color:var(--text-muted);">Commission Fill Rate × Qty × 2</span> → Commission RT</div>'
+      +'<div style="color:var(--amber);font-size:10px;margin-top:3px;">⚠️ Rithmic แยก fills หลาย row ต่อ 1 order — ระบบ merge อัตโนมัติ</div>',
+  };
+
+  var modal = document.createElement('div');
+  modal.id = 'fundedImportModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML =
+    '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px;min-width:400px;max-width:520px;width:96vw;position:relative;">'
+    +'<button onclick="document.getElementById(\'fundedImportModal\').remove()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text-muted)\'">✕</button>'
+    +'<div style="font-size:14px;font-weight:600;margin-bottom:12px;">📥 Import Funded</div>'
+
+    // Broker tabs
+    +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;">'
+    + brokerTabs
+    +'</div>'
+
+    // Field map info box
+    +'<div id="fundedFieldMap" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:10px;line-height:1.85;color:var(--text-secondary);">'
     +'<div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">📋 Field Mapping</div>'
-    +'<div><span style="color:var(--text-muted);">ContractName</span> → Asset</div>'
-    +'<div><span style="color:var(--text-muted);">EnteredAt / ExitedAt</span> → Entry / Close Date&Time</div>'
-    +'<div><span style="color:var(--text-muted);">EntryPrice / ExitPrice</span> → Entry / Close Price</div>'
-    +'<div><span style="color:var(--text-muted);">PnL (+)</span> → TP &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL (-)</span> → SL</div>'
-    +'<div><span style="color:var(--text-muted);">Fees</span> → Commission &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL - Fees</span> → <strong style="color:var(--green);">Net P&L($)</strong></div>'
-    +'<div><span style="color:var(--text-muted);">Size</span> → Lots &nbsp;|&nbsp; <span style="color:var(--text-muted);">Type</span> → Side (Long/Short)</div>'
-    +'<div><span style="color:var(--text-muted);">TradeDuration</span> → Time in Position</div>'
+    +'<div id="fundedFieldMapBody">'+fieldMaps['topstep']+'</div>'
     +'</div>'
-    +'<div onclick="document.getElementById(\'topstepFileIn\').click()" id="topstepDropZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s;margin-bottom:12px;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" ondragover="event.preventDefault();this.style.borderColor=\'var(--accent)\'" ondragleave="this.style.borderColor=\'var(--border)\'" ondrop="handleTopstepDrop(event)">'
-    +'<div style="font-size:24px;margin-bottom:6px;">📂</div>'
-    +'<div style="font-size:12px;color:var(--text-muted);">คลิกหรือลากไฟล์ trades_export.csv มาวางที่นี่</div>'
-    +'<div id="topstepFileInfo" style="margin-top:6px;font-size:11px;color:var(--accent);"></div>'
+
+    // Drop zone
+    +'<div onclick="document.getElementById(\'fundedFileIn\').click()" id="fundedDropZone" '
+    +'style="border:2px dashed var(--border);border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:border-color .15s;margin-bottom:12px;" '
+    +'onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" '
+    +'ondragover="event.preventDefault();this.style.borderColor=\'var(--accent)\'" '
+    +'ondragleave="this.style.borderColor=\'var(--border)\'" ondrop="handleFundedDrop(event)">'
+    +'<div style="font-size:24px;margin-bottom:5px;">📂</div>'
+    +'<div id="fundedDropHint" style="font-size:12px;color:var(--text-muted);">คลิกหรือลากไฟล์ CSV มาวางที่นี่</div>'
+    +'<div id="fundedFileInfo" style="margin-top:5px;font-size:11px;color:var(--accent);"></div>'
     +'</div>'
-    +'<input type="file" id="topstepFileIn" accept=".csv" style="display:none;" onchange="readTopstepFile(this.files[0])">'
-    +'<div id="topstepPreview" style="display:none;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:11px;max-height:140px;overflow-y:auto;"></div>'
+    +'<input type="file" id="fundedFileIn" accept=".csv" style="display:none;" onchange="readFundedFile(this.files[0])">'
+    +'<div id="fundedPreview" style="display:none;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:11px;max-height:150px;overflow-y:auto;"></div>'
     +'<div style="display:flex;gap:7px;">'
-    +'<button id="topstepImportBtn" class="btn-primary" onclick="confirmTopstepImport()" style="flex:1;display:none;">✅ Import ทั้งหมด</button>'
-    +'<button class="btn-sm" onclick="document.getElementById(\'topstepImportModal\').remove()">ปิด</button>'
-    +'</div></div>';
+    +'<button id="fundedImportBtn" class="btn-primary" onclick="confirmFundedImport()" style="flex:1;display:none;">✅ Import ทั้งหมด</button>'
+    +'<button class="btn-sm" onclick="document.getElementById(\'fundedImportModal\').remove()">ปิด</button>'
+    +'</div></div>'
+    +'<style>'
+    +'.funded-tab{background:var(--bg-input);border:1px solid var(--border);color:var(--text-muted);border-radius:20px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-main);transition:all .15s;white-space:nowrap;}'
+    +'.funded-tab:hover{border-color:var(--accent);color:var(--accent);}'
+    +'.funded-tab.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}'
+    +'</style>';
   document.body.appendChild(modal);
   modal.addEventListener('mousedown',function(e){modal._md=(e.target===modal);});
   modal.addEventListener('mouseup',function(e){if(e.target===modal&&modal._md)modal.remove();modal._md=false;});
+
+  _fundedBroker = 'topstep';
+  _fundedImportData = [];
+  selectFundedBroker('topstep');
 }
-var _topstepData=[];
-function handleTopstepDrop(e){
-  e.preventDefault();e.currentTarget.style.borderColor='var(--border)';
-  var f=e.dataTransfer.files[0];if(f)readTopstepFile(f);
+
+var _FUNDED_FIELD_MAPS = {
+  topstep: '<div><span style="color:var(--text-muted);">ContractName</span> → Asset</div>'
+    +'<div><span style="color:var(--text-muted);">EnteredAt / ExitedAt</span> → Entry / Close DateTime</div>'
+    +'<div><span style="color:var(--text-muted);">EntryPrice / ExitPrice</span> → Entry / Close Price</div>'
+    +'<div><span style="color:var(--text-muted);">PnL (+)</span> → TP &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL (-)</span> → SL</div>'
+    +'<div><span style="color:var(--text-muted);">Fees</span> → Commission &nbsp;|&nbsp; <span style="color:var(--text-muted);">PnL − Fees</span> → Net P&L</div>'
+    +'<div><span style="color:var(--text-muted);">Size</span> → Lots &nbsp;|&nbsp; <span style="color:var(--text-muted);">Type</span> → Long/Short</div>'
+    +'<div><span style="color:var(--text-muted);">TradeDuration</span> → Time in Position</div>',
+  apex_rith: '<div><span style="color:var(--text-muted);">Product</span> → Asset</div>'
+    +'<div><span style="color:var(--text-muted);">Last Fill Time (SEAST)</span> → DateTime</div>'
+    +'<div><span style="color:var(--text-muted);">Limit Price / Stop-Trigger Price</span> → Fill Price</div>'
+    +'<div><span style="color:var(--text-muted);">Buy/Sell + FIFO pairing</span> → Long / Short</div>'
+    +'<div><span style="color:var(--text-muted);">Closed P&L (gross) − Commission</span> → Net P&L</div>'
+    +'<div><span style="color:var(--text-muted);">Commission Fill Rate × Qty × 2 legs</span> → Comm RT</div>'
+    +'<div style="color:var(--amber);font-size:10px;margin-top:3px;">⚠️ Rithmic แยก fills หลาย row ต่อ order — merge อัตโนมัติ</div>',
+  apex_trad: '<div style="color:var(--text-muted);">🚧 Coming soon</div>',
+  lucid_rith: '<div style="color:var(--text-muted);">🚧 Coming soon</div>',
+  lucid_trad: '<div style="color:var(--text-muted);">🚧 Coming soon</div>',
+};
+
+function selectFundedBroker(id){
+  _fundedBroker = id;
+  _fundedImportData = [];
+  // Update tab styles
+  ['topstep','apex_rith','apex_trad','lucid_rith','lucid_trad'].forEach(function(b){
+    var el = document.getElementById('ftab_'+b);
+    if(el) el.className = 'funded-tab'+(b===id?' active':'');
+  });
+  // Update field map
+  var mapEl = document.getElementById('fundedFieldMapBody');
+  if(mapEl) mapEl.innerHTML = _FUNDED_FIELD_MAPS[id] || '';
+  // Update hint
+  var hints = {topstep:'trades_export.csv (จาก Topstep Dashboard)',apex_rith:'Order_History.csv (จาก Rithmic / Apex)',apex_trad:'Coming soon',lucid_rith:'Coming soon',lucid_trad:'Coming soon'};
+  var hint = document.getElementById('fundedDropHint');
+  if(hint) hint.textContent = 'คลิกหรือลากไฟล์ '+( hints[id]||'CSV' )+' มาวางที่นี่';
+  // Reset preview
+  var prev = document.getElementById('fundedPreview');
+  var btn  = document.getElementById('fundedImportBtn');
+  var info = document.getElementById('fundedFileInfo');
+  if(prev){prev.style.display='none';prev.innerHTML='';}
+  if(btn) btn.style.display='none';
+  if(info) info.textContent='';
+  var fin = document.getElementById('fundedFileIn');
+  if(fin) fin.value='';
 }
-function readTopstepFile(file){
-  if(!file){return;}
-  document.getElementById('topstepFileInfo').textContent='📄 '+file.name;
-  var r=new FileReader();
-  r.onload=function(ev){
-    parseTopstepCSV(ev.target.result);
+
+function handleFundedDrop(e){
+  e.preventDefault();
+  e.currentTarget.style.borderColor='var(--border)';
+  var f = e.dataTransfer.files[0];
+  if(f) readFundedFile(f);
+}
+
+function readFundedFile(file){
+  if(!file) return;
+  if(['apex_trad','lucid_rith','lucid_trad'].indexOf(_fundedBroker)>=0){
+    showToast('🚧 Coming soon — รูปแบบนี้กำลังพัฒนา','error'); return;
+  }
+  document.getElementById('fundedFileInfo').textContent = '📄 '+file.name;
+  var r = new FileReader();
+  r.onload = function(ev){
+    if(_fundedBroker === 'topstep'){
+      parseFundedTopstep(ev.target.result);
+    } else if(_fundedBroker === 'apex_rith'){
+      parseFundedApexRithmic(ev.target.result);
+    }
   };
   r.readAsText(file);
 }
-function parseTopstepCSV(text){
-  // Remove BOM
-  text=text.replace(/^\uFEFF/,'');
-  var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
-  if(lines.length<2){showToast('❌ ไฟล์ CSV ว่างเปล่า','error');return;}
-  var headers=lines[0].split(',').map(function(h){return h.trim();});
+
+// ─── TOPSTEP PARSER (คงเดิม) ────────────────────────────────
+function parseFundedTopstep(text){
+  text = text.replace(/^\uFEFF/,'');
+  var lines = text.split(/\r?\n/).filter(function(l){return l.trim();});
+  if(lines.length < 2){showToast('❌ ไฟล์ CSV ว่างเปล่า','error');return;}
+  var headers = lines[0].split(',').map(function(h){return h.trim();});
   function col(row,name){var i=headers.indexOf(name);return i>=0?(row[i]||'').trim():'';}
-  _topstepData=[];
-  var skipped=0;
+  _fundedImportData = [];
+  var skipped = 0;
   for(var i=1;i<lines.length;i++){
-    var parts=lines[i].split(',');
-    var contractName=col(parts,'ContractName');
+    var parts = lines[i].split(',');
+    var contractName = col(parts,'ContractName');
     if(!contractName){skipped++;continue;}
-    // Parse dates — format: "04/14/2026 08:51:17 +07:00" (MM/DD/YYYY — Topstep US format)
     function parseTopstepDate(ds){
       if(!ds) return '';
-      // MM/DD/YYYY HH:MM:SS ±HH:MM
-      var m=ds.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/);
-      if(m) return m[3]+'-'+m[1]+'-'+m[2]+'T'+m[4]; // YYYY-MM-DDTHH:MM (m[1]=MM, m[2]=DD)
+      var m = ds.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/);
+      if(m) return m[3]+'-'+m[1]+'-'+m[2]+'T'+m[4];
       return '';
     }
-    var enteredAt=parseTopstepDate(col(parts,'EnteredAt'));
-    var exitedAt=parseTopstepDate(col(parts,'ExitedAt'));
-    // Date key for storage (YYYY-MM-DD from enteredAt)
-    var dateKey=enteredAt?enteredAt.substring(0,10):'';
-    var pnl=parseFloat(col(parts,'PnL'))||0;
-    var fees=parseFloat(col(parts,'Fees'))||0;
-    // Topstep PnL = gross (before fees) → net = PnL - Fees
-    var netPnl=pnl-fees;
-    var exitPrice=col(parts,'ExitPrice');
-    var entryPrice=col(parts,'EntryPrice');
-    // Normalize contract name: remove suffix like M6 → MNQM6 → MNQ1
-    var asset=contractName.replace(/M\d+$/,'1');
-    // Commission = Topstep platform fee per round-trip (from COMM table)
-    var lots=parseFloat(col(parts,'Size')||'1')||1;
-    var tsCommRate=COMM[asset]||0;
-    var tsComm=(lots*tsCommRate).toFixed(2);
-    var trade={
-      asset:asset,
-      side:col(parts,'Type')||'Long',
-      lots:col(parts,'Size')||'1',
+    var enteredAt = parseTopstepDate(col(parts,'EnteredAt'));
+    var exitedAt  = parseTopstepDate(col(parts,'ExitedAt'));
+    var dateKey   = enteredAt ? enteredAt.substring(0,10) : '';
+    var pnl    = parseFloat(col(parts,'PnL'))||0;
+    var fees   = parseFloat(col(parts,'Fees'))||0;
+    var netPnl = pnl - fees;
+    var exitPrice  = col(parts,'ExitPrice');
+    var entryPrice = col(parts,'EntryPrice');
+    var asset = contractName.replace(/M\d+$/,'1');
+    var lots  = parseFloat(col(parts,'Size')||'1')||1;
+    var tsCommRate = COMM[asset]||0;
+    var tsComm = (lots*tsCommRate).toFixed(2);
+    var trade = {
+      asset:asset, side:col(parts,'Type')||'Long', lots:col(parts,'Size')||'1',
       entry:entryPrice?parseFloat(entryPrice).toFixed(2):'',
-      close:exitPrice?parseFloat(exitPrice).toFixed(2):'',
+      close:exitPrice ?parseFloat(exitPrice).toFixed(2):'',
       tp: netPnl>=0 ? (exitPrice?parseFloat(exitPrice).toFixed(2):'') : '',
       sl: netPnl<0  ? (exitPrice?parseFloat(exitPrice).toFixed(2):'') : '',
-      pnl:netPnl.toFixed(2),
-      fees:fees.toFixed(2),
-      commission:tsComm,
+      pnl:netPnl.toFixed(2), fees:fees.toFixed(2), commission:tsComm,
       result:netPnl>0?'Win':netPnl<0?'Loss':'BE',
-      entryDate:enteredAt,
-      closeDate:exitedAt,
-      timeInPos:formatTopstepDuration(col(parts,'TradeDuration')),
+      entryDate:enteredAt, closeDate:exitedAt,
+      timeInPos:_formatFundedDuration(col(parts,'TradeDuration')),
       note:'',imgLink:'',maxRR:'',setupClass:'',candle:'',code:'',mode:'',tf:'',trend:'',zone:'',confirm:'',sessions:'',emotion:5,discipline:5,
-      id:_uuid(), // BUG-B FIX: use _uuid() not Date.now()+i
-      _dateKey:dateKey
+      id:_uuid(), _dateKey:dateKey
     };
-    // Merge key: same asset + side + entryPrice + entryTime → รวมเป็น 1 ออเดอร์
-    var mergeKey=asset+'|'+(col(parts,'Type')||'Long')+'|'+(entryPrice?parseFloat(entryPrice).toFixed(2):'')+  '|'+enteredAt;
-    var existing=null;
-    for(var j=0;j<_topstepData.length;j++){if(_topstepData[j]._mergeKey===mergeKey){existing=_topstepData[j];break;}}
+    var mergeKey = asset+'|'+(col(parts,'Type')||'Long')+'|'+(entryPrice?parseFloat(entryPrice).toFixed(2):'')+  '|'+enteredAt;
+    var existing = null;
+    for(var j=0;j<_fundedImportData.length;j++){if(_fundedImportData[j]._mergeKey===mergeKey){existing=_fundedImportData[j];break;}}
     if(existing){
-      // รวม lots, pnl, fees, commission; ใช้ closeDate ล่าสุด
-      existing.lots=(parseFloat(existing.lots||0)+parseFloat(trade.lots||0)).toString();
-      existing.pnl=(parseFloat(existing.pnl)+parseFloat(trade.pnl)).toFixed(2);
-      existing.fees=(parseFloat(existing.fees||0)+parseFloat(trade.fees||0)).toFixed(2);
-      existing.commission=(parseFloat(existing.commission||0)+parseFloat(trade.commission||0)).toFixed(2);
-      // ใช้ exitedAt ที่ช้ากว่า
+      existing.lots = (parseFloat(existing.lots||0)+parseFloat(trade.lots||0)).toString();
+      existing.pnl  = (parseFloat(existing.pnl)+parseFloat(trade.pnl)).toFixed(2);
+      existing.fees = (parseFloat(existing.fees||0)+parseFloat(trade.fees||0)).toFixed(2);
+      existing.commission = (parseFloat(existing.commission||0)+parseFloat(trade.commission||0)).toFixed(2);
       if(trade.closeDate&&(!existing.closeDate||trade.closeDate>existing.closeDate)) existing.closeDate=trade.closeDate;
-      // recalc result
-      var mergedNet=parseFloat(existing.pnl);
-      existing.result=mergedNet>0?'Win':mergedNet<0?'Loss':'BE';
-      existing.tp=mergedNet>=0?(existing.close||''):'';
-      existing.sl=mergedNet<0?(existing.close||''):'';
+      var mergedNet = parseFloat(existing.pnl);
+      existing.result = mergedNet>0?'Win':mergedNet<0?'Loss':'BE';
+      existing.tp = mergedNet>=0?(existing.close||''):'';
+      existing.sl = mergedNet<0?(existing.close||''):'';
     } else {
-      trade._mergeKey=mergeKey;
-      _topstepData.push(trade);
+      trade._mergeKey = mergeKey;
+      _fundedImportData.push(trade);
     }
   }
-  // Show preview
-  var prev=document.getElementById('topstepPreview');
-  var btn=document.getElementById('topstepImportBtn');
-  if(!_topstepData.length){prev.style.display='block';prev.innerHTML='<span style="color:var(--red);">❌ ไม่พบข้อมูลที่ valid</span>';btn.style.display='none';return;}
-  // Group by date
-  var byDate={};
-  _topstepData.forEach(function(t){if(!byDate[t._dateKey])byDate[t._dateKey]=[];byDate[t._dateKey].push(t);});
-  var rows=Object.keys(byDate).sort().map(function(d){
-    var trades=byDate[d];
-    var totalPnl=trades.reduce(function(s,t){return s+parseFloat(t.pnl);},0);
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">'
-      +'<span style="font-family:var(--font-mono);color:var(--text-secondary);">'+d+'</span>'
-      +'<span>'+trades.length+' trades</span>'
-      +'<span style="font-family:var(--font-mono);font-weight:600;color:'+(totalPnl>=0?'var(--green)':'var(--red)')+';">'+(totalPnl>=0?'+':'')+'$'+Math.abs(totalPnl).toFixed(2)+'</span>'
-      +'</div>';
-  }).join('');
-  prev.style.display='block';
-  prev.innerHTML='<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">พบ <strong style="color:var(--accent);">'+_topstepData.length+'</strong> trades ใน <strong style="color:var(--accent);">'+Object.keys(byDate).length+'</strong> วัน'+( skipped?' (<span style="color:var(--amber);">'+skipped+' rows skipped</span>)':'' )+'</div>'+rows;
-  btn.style.display='block';
+  _showFundedPreview(skipped);
 }
-function formatTopstepDuration(dur){
-  // Format: "00:02:00.5907020" → "2m" or "00:05:57.8439460" → "5m 57s"
+
+// ─── APEX RITHMIC PARSER ─────────────────────────────────────
+function parseFundedApexRithmic(text){
+  text = text.replace(/^\uFEFF/,'');
+  var allLines = text.split(/\r?\n/);
+
+  // Find "Completed Orders" section
+  var compIdx = -1;
+  for(var i=0;i<allLines.length;i++){
+    if(allLines[i].replace(/"/g,'').trim() === 'Completed Orders'){ compIdx=i; break; }
+  }
+  if(compIdx < 0){ showToast('❌ ไม่พบ "Completed Orders" section ใน CSV','error'); return; }
+
+  // Parse headers
+  function parseCSVLine(line){
+    var parts=[]; var inQ=false; var cur='';
+    for(var ci=0;ci<line.length;ci++){
+      var c=line[ci];
+      if(c==='"'){inQ=!inQ;}
+      else if(c===','&&!inQ){parts.push(cur.trim());cur='';}
+      else{cur+=c;}
+    }
+    parts.push(cur.trim());
+    return parts;
+  }
+
+  var headers = parseCSVLine(allLines[compIdx+1]);
+
+  function col(row, name){
+    var idx = headers.indexOf(name);
+    return idx >= 0 ? (row[idx]||'').trim() : '';
+  }
+
+  // Collect Filled rows only
+  var filled = [];
+  for(var i=compIdx+2; i<allLines.length; i++){
+    if(!allLines[i].trim()) continue;
+    var parts = parseCSVLine(allLines[i]);
+    if(parts.length < headers.length) continue;
+    var status = col(parts,'Status');
+    if(status !== 'Filled') continue;
+    var qtyFilled = parseInt(col(parts,'Qty Filled')||'0')||0;
+    if(qtyFilled <= 0) continue;
+
+    // Fill price: Market order -> Stop/Trigger Price, Limit order -> Limit Price
+    var priceType = col(parts,'Price Type');
+    var limitP    = col(parts,'Limit Price');
+    var stopP     = col(parts,'Stop/Trigger Price');
+    var fillPrice = 0;
+    if(priceType === 'M'){ fillPrice = parseFloat(stopP)||0; }
+    else { fillPrice = parseFloat(limitP)||parseFloat(stopP)||0; }
+
+    var fillTime = col(parts,'Last Fill Time (SEAST)') || col(parts,'Update Time (SEAST)');
+    var pnlStr   = col(parts,'Closed Profit/Loss');
+    var balStr   = col(parts,'Account Balance');
+    var commRate = parseFloat(col(parts,'Commission Fill Rate')||'0.51')||0.51;
+
+    filled.push({
+      product: col(parts,'Product'),
+      side:    col(parts,'Buy/Sell'),   // 'B' or 'S'
+      qty:     qtyFilled,
+      price:   fillPrice,
+      time:    fillTime,
+      pnl:     pnlStr ? parseFloat(pnlStr) : null,
+      bal:     balStr ? parseFloat(balStr) : null,
+      commRate: commRate,
+    });
+  }
+
+  if(!filled.length){ showToast('❌ ไม่พบ Filled orders ใน CSV','error'); return; }
+
+  // ── Step 1: Merge split fills (same time+side+price+product = 1 order) ──
+  var mergedMap = {};
+  var merged = [];
+  filled.forEach(function(r){
+    var key = r.time+'|'+r.product+'|'+r.side+'|'+r.price.toFixed(2);
+    if(mergedMap[key]){
+      mergedMap[key].qty += r.qty;
+      if(r.pnl !== null) mergedMap[key].pnl = r.pnl;
+      if(r.bal !== null) mergedMap[key].bal = r.bal;
+    } else {
+      mergedMap[key] = {product:r.product,side:r.side,qty:r.qty,price:r.price,
+        time:r.time,pnl:r.pnl,bal:r.bal,commRate:r.commRate};
+      merged.push(mergedMap[key]);
+    }
+  });
+
+  // Sort chronologically
+  merged.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+
+  // ── Step 2: FIFO matching per product ──
+  // "Closing order" = row that has Account Balance set (non-empty, non-zero)
+  // Opening order = no balance set
+  // Pair: B open + S close = Long trade
+  //       S open + B close = Short trade
+
+  var openStack = {}; // keyed by product
+  _fundedImportData = [];
+
+  merged.forEach(function(o){
+    var prod = o.product;
+    if(!openStack[prod]) openStack[prod] = [];
+
+    var side  = o.side;   // 'B' or 'S'
+    var qty   = o.qty;
+    var price = o.price;
+    var time  = o.time;
+    var pnl   = o.pnl;   // gross P&L from CSV (only on closing order)
+    var bal   = o.bal;
+    var comm  = o.commRate;
+    var opp   = side === 'B' ? 'S' : 'B';
+    var stack = openStack[prod];
+
+    // If stack has opposite-side orders → closing
+    if(stack.length && stack[0].side === opp){
+      var remainQty = qty;
+      while(remainQty > 0 && stack.length && stack[0].side === opp){
+        var op = stack[0];
+        var useQty = Math.min(remainQty, op.qty);
+        var tradeSide = op.side === 'B' ? 'Long' : 'Short';
+
+        // Commission: both legs (entry + exit)
+        var totalComm = parseFloat((useQty * comm * 2).toFixed(2));
+
+        // Gross P&L: use CSV value when available (from closing order)
+        // Distribute proportionally if we're partially closing
+        var grossPnl;
+        if(pnl !== null){
+          grossPnl = parseFloat((pnl * (useQty / qty)).toFixed(2));
+        } else {
+          // Fallback: calculate from price diff
+          // MNQ = $2/point/contract, NQ = $20/point/contract
+          var multiplier = _getRithmicMultiplier(prod);
+          if(tradeSide === 'Long'){
+            grossPnl = parseFloat(((price - op.price) * useQty * multiplier).toFixed(2));
+          } else {
+            grossPnl = parseFloat(((op.price - price) * useQty * multiplier).toFixed(2));
+          }
+        }
+
+        var netPnl = parseFloat((grossPnl - totalComm).toFixed(2));
+        var dateKey = op.time.substring(0,10); // use entry date as trade date
+
+        // Normalize asset name (remove expiry suffix like M6, Z5 etc.)
+        var asset = prod.replace(/[FGHJKMNQUVXZ]\d+$/,'')+'1';
+
+        var trade = {
+          asset: asset,
+          side:  tradeSide,
+          lots:  String(useQty),
+          entry: op.price ? op.price.toFixed(2) : '',
+          close: price    ? price.toFixed(2)    : '',
+          tp: netPnl >= 0 ? (price ? price.toFixed(2) : '') : '',
+          sl: netPnl <  0 ? (price ? price.toFixed(2) : '') : '',
+          pnl: netPnl.toFixed(2),
+          fees: grossPnl.toFixed(2),       // gross stored in fees field for reference
+          commission: totalComm.toFixed(2),
+          result: netPnl > 0 ? 'Win' : netPnl < 0 ? 'Loss' : 'BE',
+          entryDate: op.time.replace(' ','T').substring(0,16),
+          closeDate: time.replace(' ','T').substring(0,16),
+          timeInPos: _calcTimeInPos(op.time, time),
+          note:'',imgLink:'',maxRR:'',setupClass:'',candle:'',code:'',
+          mode:'',tf:'',trend:'',zone:'',confirm:'',sessions:'',
+          emotion:5, discipline:5,
+          id: _uuid(),
+          _dateKey: dateKey,
+        };
+        _fundedImportData.push(trade);
+
+        op.qty -= useQty;
+        remainQty -= useQty;
+        if(op.qty <= 0) stack.shift();
+      }
+      // If still qty remaining → new opening order in opposite direction
+      if(remainQty > 0){
+        stack.push({side:side, qty:remainQty, price:price, time:time, commRate:comm});
+      }
+    } else {
+      // Accumulate open position
+      stack.push({side:side, qty:qty, price:price, time:time, commRate:comm});
+    }
+  });
+
+  _showFundedPreview(0);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+function _getRithmicMultiplier(prod){
+  // Futures point value per contract
+  var p = prod.replace(/[FGHJKMNQUVXZ]\d+$/,'').toUpperCase();
+  var map = {MNQ:2, NQ:20, MES:5, ES:50, MGC:10, GC:100, MCL:10, CL:1000, M2K:10, RTY:50, YM:5, MYM:0.5};
+  return map[p] || 2;
+}
+
+function _calcTimeInPos(entryTimeStr, exitTimeStr){
+  try{
+    var a = new Date(entryTimeStr.replace(' ','T'));
+    var b = new Date(exitTimeStr.replace(' ','T'));
+    var secs = Math.round((b-a)/1000);
+    if(isNaN(secs)||secs<0) return '';
+    var h = Math.floor(secs/3600);
+    var m = Math.floor((secs%3600)/60);
+    var s = secs%60;
+    var r='';
+    if(h>0) r+=h+'h ';
+    if(m>0||h>0) r+=m+'m ';
+    if(s>0) r+=s+'s';
+    return r.trim();
+  }catch(e){return '';}
+}
+
+function _formatFundedDuration(dur){
   if(!dur) return '';
-  var m=dur.match(/(\d+):(\d+):(\d+)/);
+  var m = dur.match(/(\d+):(\d+):(\d+)/);
   if(!m) return dur;
   var h=parseInt(m[1]),min=parseInt(m[2]),sec=parseInt(m[3]);
   var result='';
@@ -7509,41 +7798,75 @@ function formatTopstepDuration(dur){
   if(sec>0) result+=sec+'s';
   return result.trim();
 }
-function confirmTopstepImport(){if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
-  if(!_topstepData.length){showToast('ไม่มีข้อมูลให้ import','error');return;}
-  var count=0;
-  var batchTrades=[];
-  _topstepData.forEach(function(t){
-    var dateKey=t._dateKey;
+
+// ─── Preview & Confirm ───────────────────────────────────────
+function _showFundedPreview(skipped){
+  var prev = document.getElementById('fundedPreview');
+  var btn  = document.getElementById('fundedImportBtn');
+  if(!_fundedImportData.length){
+    prev.style.display='block';
+    prev.innerHTML='<span style="color:var(--red);">❌ ไม่พบข้อมูลที่ valid</span>';
+    btn.style.display='none';
+    return;
+  }
+  var byDate = {};
+  _fundedImportData.forEach(function(t){
+    if(!byDate[t._dateKey]) byDate[t._dateKey]=[];
+    byDate[t._dateKey].push(t);
+  });
+  var rows = Object.keys(byDate).sort().map(function(d){
+    var trades = byDate[d];
+    var totalPnl = trades.reduce(function(s,t){return s+parseFloat(t.pnl);},0);
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">'
+      +'<span style="font-family:var(--font-mono);color:var(--text-secondary);">'+d+'</span>'
+      +'<span style="color:var(--text-muted);">'+trades.length+' trade'+(trades.length>1?'s':'')+'</span>'
+      +'<span style="font-family:var(--font-mono);font-weight:600;color:'+(totalPnl>=0?'var(--green)':'var(--red)')+';">'+(totalPnl>=0?'+':'')+'$'+Math.abs(totalPnl).toFixed(2)+'</span>'
+      +'</div>';
+  }).join('');
+  prev.style.display='block';
+  prev.innerHTML='<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">พบ <strong style="color:var(--accent);">'+_fundedImportData.length+'</strong> trades ใน <strong style="color:var(--accent);">'+Object.keys(byDate).length+'</strong> วัน'+(skipped?' (<span style="color:var(--amber);">'+skipped+' rows skipped</span>)':'')+'</div>'+rows;
+  btn.style.display='block';
+}
+
+function confirmFundedImport(){
+  if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
+  if(!_fundedImportData.length){showToast('ไม่มีข้อมูลให้ import','error');return;}
+  var count = 0;
+  var batchTrades = [];
+  _fundedImportData.forEach(function(t){
+    var dateKey = t._dateKey;
     if(!dateKey) return;
     if(!S.trades[dateKey]) S.trades[dateKey]=[];
-    t.id=_uuid();
-    var tradeObj=Object.assign({},t);
+    t.id = _uuid();
+    var tradeObj = Object.assign({},t);
     delete tradeObj._dateKey;
     delete tradeObj._mergeKey;
     if(!tradeObj.fiboLevel) tradeObj.fiboLevel='';
     S.trades[dateKey].push(tradeObj);
     if(!S.sessions[dateKey]) S.sessions[dateKey]={};
-    var trades=S.trades[dateKey];
-    var pnl=trades.reduce(function(s,tr){return s+(parseFloat(tr.pnl)||0);},0);
-    var wins=trades.filter(function(tr){return parseFloat(tr.pnl)>0;}).length;
-    S.sessions[dateKey].netPnl=pnl;
-    S.sessions[dateKey].trades=trades.length;
-    S.sessions[dateKey].wins=wins;
-    // สะสมไว้ใน batch — ไม่ส่งทีละอัน
+    var trades = S.trades[dateKey];
+    var pnl  = trades.reduce(function(s,tr){return s+(parseFloat(tr.pnl)||0);},0);
+    var wins = trades.filter(function(tr){return parseFloat(tr.pnl)>0;}).length;
+    S.sessions[dateKey].netPnl  = pnl;
+    S.sessions[dateKey].trades  = trades.length;
+    S.sessions[dateKey].wins    = wins;
     batchTrades.push(Object.assign({date:dateKey,portfolio:S.currentPortfolio},tradeObj));
     count++;
   });
   persistPort();
   updateStats();renderCal();updateRecent();renderTodayOrders();
-  document.getElementById('topstepImportModal').remove();
-  showToast('\u2705 Import '+count+' trades จาก Topstep แล้ว','success');
-  _topstepData=[];
-  // ── ส่ง Sheet แบบ batch ครั้งเดียว — ป้องกัน rate limit ──
+  document.getElementById('fundedImportModal').remove();
+  var brokerLabel = {topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'}[_fundedBroker]||_fundedBroker;
+  showToast('✅ Import '+count+' trades จาก '+brokerLabel+' แล้ว','success');
+  _fundedImportData = [];
   if(_supabase&&batchTrades.length){
-    sendSheet('batchSaveTrades',{trades:batchTrades}); // no-cors FIX: ใช้ sendSheet แทน
+    sendSheet('batchSaveTrades',{trades:batchTrades});
   }
 }
+
+// ── backward-compat: keep old name so any saved references still work ──
+function openTopstepImport(){ openFundedImport(); }
+var _topstepData = _fundedImportData; // alias
 
 // ── CUSTOM CONFIRM (แทน window.confirm ที่ถูก block ใน file://) ──
 function showConfirm(msg, onOk){
