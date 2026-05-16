@@ -2717,7 +2717,13 @@ async function syncFromSheet(onDone){
     _syncInProgress = false;
     setConn(true);
     if(sheetRes){ sheetRes.style.color='var(--green)'; sheetRes.textContent='✅ Sync เสร็จแล้ว!'; }
+    // Re-render ตาม active view ที่ user อยู่ตอนนี้
     renderCal(); updateStats(); updateRecent();
+    if(typeof _activeView !== 'undefined'){
+      if(_activeView === 'weekly'){ renderWeekly(); drawEQW(); }
+      else if(_activeView === 'dashboard'){ renderDashboard(); }
+      else { drawEQ(); }
+    }
     // Auto-load today in right sidebar if there's data
     var _todayKey = dk(new Date());
     if(S.sessions[_todayKey] || (S.trades[_todayKey] && S.trades[_todayKey].length)){
@@ -2850,14 +2856,15 @@ function getPortfolioKey(dateKey){return S.currentPortfolio+'__'+dateKey;}
 function getCurrentSessions(){return S.sessions;}
 // Portfolio data are stored with prefix: port_ID_sessions / port_ID_trades
 function getPortSessions(){
-  // ถ้ามี Sheet และ S.sessions มีข้อมูลแล้ว → ใช้ memory โดยตรง
-  if(_supabase && S.sessions && Object.keys(S.sessions).length) return S.sessions;
+  // ถ้า S.sessions มีข้อมูลใน memory แล้ว (หลัง sync) → ใช้เลย
+  if(S.sessions && Object.keys(S.sessions).length) return S.sessions;
   var k='port_'+S.currentPortfolio+'_s';
   try{return JSON.parse(localStorage.getItem(k)||'{}');}catch(e){return {};}
 }
 function getPortTrades(){
-  // ถ้ามี Sheet และ S.trades มีข้อมูลแล้ว → ใช้ memory โดยตรง
-  if(_supabase && S.trades && Object.keys(S.trades).length) return S.trades;
+  // ถ้า S.trades มีข้อมูลใน memory แล้ว (หลัง sync) → ใช้เลย
+  if(S.trades && Object.keys(S.trades).length) return S.trades;
+  // อ่านจาก localStorage (cache ที่ import/persist เขียนไว้)
   var k='port_'+S.currentPortfolio+'_t';
   try{
     var raw=JSON.parse(lsGet(k)||'{}');
@@ -3630,7 +3637,9 @@ function dk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate(
 function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();}
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
+var _activeView = 'daily'; // track ว่า view ไหน active อยู่
 function switchView(v){
+  _activeView = v;
   var dataView = document.getElementById('dataView');
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
@@ -3658,7 +3667,7 @@ function switchView(v){
   if(navDash) navDash.className='nav-item'+(v==='dashboard'?' active':'');
   if(v==='weekly'){renderWeekly();drawEQW();}
   else if(v==='dashboard'){ renderDashboard(); }
-  else{drawEQ();}
+  else{ renderCal(); drawEQ(); } // daily: always re-render calendar
   // Update mobile nav buttons
   ['daily','weekly','dashboard'].forEach(function(n){
     var btn = document.getElementById('_mb'+n.charAt(0).toUpperCase()+n.slice(1));
@@ -7674,49 +7683,7 @@ function parseFundedApexRithmic(text){
     }
   });
 
-  // ── Merge trades: same entryTime(HH:MM) + entryPrice + side + asset ──
-  // เหตุผล: Rithmic fill ทีละ lot หรือ slippage ปิดต่างราคา แต่ entry เดียวกัน
-  _fundedImportData = _mergeFundedSameEntry(_fundedImportData);
-
   _showFundedPreview(0);
-}
-
-// ─── Merge same-entry trades ─────────────────────────────────────────────
-// รวม trades ที่ asset + side + entryTime(HH:MM) + entryPrice เหมือนกัน → 1 order
-// (Rithmic fill ทีละ 1 lot บางครั้ง หรือ TP/SL ปิดต่างราคา แต่ entry เดียวกัน)
-function _mergeFundedSameEntry(trades){
-  var merged=[];
-  var idx={};
-  trades.forEach(function(t){
-    var entryMin=(t.entryDate||'').substring(0,16); // "YYYY-MM-DDTHH:MM"
-    var key=(t.asset||'')+'|'+(t.side||'')+'|'+entryMin+'|'+(t.entry||'');
-    if(idx[key]!==undefined){
-      var ex=merged[idx[key]];
-      var exLots=parseFloat(ex.lots)||0;
-      var addLots=parseFloat(t.lots)||0;
-      var total=exLots+addLots;
-      // Weighted-average close price
-      var wavg=total>0?((parseFloat(ex.close||0)*exLots)+(parseFloat(t.close||0)*addLots))/total:parseFloat(ex.close||0);
-      ex.lots=String(total);
-      ex.close=wavg.toFixed(2);
-      ex.pnl=(parseFloat(ex.pnl||0)+parseFloat(t.pnl||0)).toFixed(2);
-      ex.fees=(parseFloat(ex.fees||0)+parseFloat(t.fees||0)).toFixed(2);
-      ex.commission=(parseFloat(ex.commission||0)+parseFloat(t.commission||0)).toFixed(2);
-      // Use the later closeDate
-      if(t.closeDate&&(!ex.closeDate||t.closeDate>ex.closeDate)){
-        ex.closeDate=t.closeDate;
-        ex.timeInPos=_calcTimeInPos(ex.entryDate,ex.closeDate);
-      }
-      var net=parseFloat(ex.pnl);
-      ex.result=net>0?'Win':net<0?'Loss':'BE';
-      ex.tp=net>=0?ex.close:'';
-      ex.sl=net<0?ex.close:'';
-    } else {
-      idx[key]=merged.length;
-      merged.push(Object.assign({},t));
-    }
-  });
-  return merged;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -7787,7 +7754,16 @@ function confirmFundedImport(){
     batchTrades.push(Object.assign({date:dk,portfolio:S.currentPortfolio},obj));
     count++;
   });
-  persistPort();updateStats();renderCal();updateRecent();renderTodayOrders();
+  persistPort();
+  // Force localStorage cache เสมอ — เพื่อให้ Daily/Weekly render ได้ทันทีแม้มี Supabase
+  try{ lsSet('port_'+S.currentPortfolio+'_t', JSON.stringify(S.trades)); }catch(e){}
+  try{ lsSet('port_'+S.currentPortfolio+'_s', JSON.stringify(S.sessions)); }catch(e){}
+  updateStats(); renderCal(); updateRecent(); renderTodayOrders();
+  // Re-render active view ด้วย (กรณีอยู่ที่ weekly/dashboard)
+  if(typeof _activeView !== 'undefined'){
+    if(_activeView === 'weekly') renderWeekly();
+    else if(_activeView === 'dashboard') setTimeout(renderDashboard, 0);
+  }
   document.getElementById('fundedImportModal').remove();
   var lbl={topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'}[_fundedBroker]||_fundedBroker;
   showToast('✅ Import '+count+' trades จาก '+lbl+' แล้ว','success');
