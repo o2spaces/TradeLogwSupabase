@@ -1387,7 +1387,7 @@ var _supabase = null;
           </div>
           <div id="riskWarnBar" style="display:none;background:var(--red-dim);border:1px solid var(--red);border-radius:var(--radius-sm);padding:5px 9px;font-size:10px;color:var(--red);margin-bottom:7px;align-items:center;justify-content:space-between;gap:8px;"><span id="riskWarnMsg">⚠️ SL ระยะเกิน Risk ที่ตั้งไว้! ตรวจสอบ Lot Size</span><button onclick="dismissRiskWarn()" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:var(--font-main);flex-shrink:0;">เพิกเฉย ✕</button></div>
           <div class="fg2">
-            <div class="form-field"><label style="display:flex;align-items:center;justify-content:space-between;"><span>Close Price</span><span style="display:flex;gap:3px;"><button type="button" onclick="(function(){var v=document.getElementById('oEntry').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;">Entry</button><button type="button" onclick="(function(){var v=document.getElementById('oTP').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;">TP</button><button type="button" onclick="(function(){var v=document.getElementById('oSL').value;if(v){document.getElementById('oClose').value=v;calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:rgba(239,68,68,.15);border:1px solid var(--red);border-radius:6px;color:var(--red);cursor:pointer;">SL</button></span></label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()" onchange="calcPnl();checkBEClose()" onblur="calcPnl();checkBEClose()"></div>
+            <div class="form-field"><label style="display:flex;align-items:center;justify-content:space-between;"><span>Close Price</span><span style="display:flex;gap:3px;"><button type="button" onclick="(function(){var v=document.getElementById('oEntry').value;if(v){document.getElementById('oClose').value=v;calcRiskLots();calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;">Entry</button><button type="button" onclick="(function(){var v=document.getElementById('oTP').value;if(v){document.getElementById('oClose').value=v;calcRiskLots();calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;">TP</button><button type="button" onclick="(function(){var v=document.getElementById('oSL').value;if(v){document.getElementById('oClose').value=v;calcRiskLots();calcPnl();checkBEClose();}})()" style="font-size:9px;padding:1px 5px;background:rgba(239,68,68,.15);border:1px solid var(--red);border-radius:6px;color:var(--red);cursor:pointer;">SL</button></span></label><input class="form-input" id="oClose" type="number" step="any" placeholder="0.00" oninput="calcPnl();checkBEClose()" onchange="calcPnl();checkBEClose()" onblur="calcPnl();checkBEClose()"></div>
             <div class="form-field"><label>P&L ($) <span style="font-size:9px;color:var(--amber)">(auto)</span></label><input class="form-input" id="oPnl" type="number" step="any" placeholder="0.00" oninput="updateResult()"></div>
           </div>
           <div class="fg2">
@@ -4278,7 +4278,10 @@ var POINT_VAL={
   EURUSD:100000,   // $10/pip/lot ÷ 0.0001 pip = 100,000
   GBPUSD:100000,   // same as EURUSD
   USDJPY:1000,     // $9.xx/pip/lot ÷ 0.001 pip ≈ 9000, แต่ใช้ 1000 เพราะ pip=0.01 บาง broker
-  BTCUSD:1
+  BTCUSD:1,
+  // Aliases ไม่มี suffix "1" (เช่นจาก AI Scan หรือ Import)
+  MNQ:2,NQ:20,MES:5,ES:50,MGC:10,GC:100,MCL:10,CL:1000,
+  MNQ1:2,NQ1:20,MES1:5,ES1:50,MGC1:10,GC1:100,MCL1:10,CL1:1000
 };
 var S_result='BE';
 var _riskWarnDismissed=false;
@@ -4330,31 +4333,31 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     var commEl=document.getElementById('oComm'); if(commEl) delete commEl.dataset.manualEdit;
     document.getElementById('oClose').value='';
     document.getElementById('oPnl').value='';
-    document.getElementById('oMaxRR').value='';
-    // Dropdowns
+
+    // ── Reset: inputs ที่ต้องว่างทุกครั้ง ──
+    ['oMaxRR','oSetupDur','oNote','oImgLink'].forEach(function(id){
+      var el=document.getElementById(id); if(el) el.value='';
+    });
+    var imgPrev=document.getElementById('oImgPreview'); if(imgPrev) imgPrev.style.display='none';
+
+    // ── Reset: dropdowns → กลับเป็น Select (value='') ──
+    ['oSetupClass','oCandle','oCode','oMode','oTF','oTrend','oZone','oConfirm','oFiboLevel'].forEach(function(id){
+      var el=document.getElementById(id); if(el) el.value='';
+    });
     document.getElementById('oResultSel').value='BE';
     document.getElementById('oContr').value='1';
-    document.getElementById('oSetupClass').value='';
-    document.getElementById('oCandle').value='';
-    document.getElementById('oCode').value='';
-    document.getElementById('oMode').value='';
-    document.getElementById('oTF').value='';
-    document.getElementById('oTrend').value='';
-    document.getElementById('oZone').value='';
-    document.getElementById('oConfirm').value='';
-    // Note & Image
-    document.getElementById('oNote').value='';
-    document.getElementById('oImgLink').value='';
-    document.getElementById('oImgPreview').style.display='none';
-    // Reset Setup Duration
-    var sdEl=document.getElementById('oSetupDur');if(sdEl)sdEl.value='';
-    // Reset behavior tag highlights in note helper
+
+    // ── Reset: behavior tag highlights ──
     var tagHelper=document.getElementById('_tagHelper_oNote');
-    if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){b.style.background='';b.style.color='';b.style.borderColor='';});
-    // Sliders
-    document.getElementById('oEmoSlider').value=5;updateOrderEmo(5);
-    document.getElementById('oDiscSlider').value=5;updateOrderDisc(5);
-    // SL point label & warn bar
+    if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){
+      if(b.textContent!=='✎'){b.style.background='';b.style.color='';b.style.borderColor='';}
+    });
+
+    // ── Reset: sliders → 5 ──
+    document.getElementById('oEmoSlider').value=5; updateOrderEmo(5);
+    document.getElementById('oDiscSlider').value=5; updateOrderDisc(5);
+
+    // ── Reset: misc UI ──
     _riskWarnDismissed=false;
     if(_orderSessEditMode){_orderSessEditMode=false;var ob=document.getElementById('orderSessEditBtn');if(ob){ob.textContent='Edit';ob.style.color='';ob.style.borderColor='';}}
     var slPt=document.getElementById('oSLPoint');if(slPt)slPt.textContent='';
@@ -4363,9 +4366,7 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     var riskDot=document.getElementById('oRiskWarnDot');if(riskDot)riskDot.style.display='none';
     var ri=document.getElementById('oRisk');if(ri){ri.style.borderColor='';ri.style.color='';}
     var cb=document.getElementById('calcBar');if(cb)cb.style.display='none';
-    // Result state
     S_result='BE';
-    // Edit index
     S._editIdx=-1;
     var ab=document.querySelector('#orderForm .btn-primary');
     if(ab){ab.textContent='✓ Add Trade';ab.onclick=function(){addTrade();};}
@@ -4378,7 +4379,7 @@ function setResult(r){
   if(sel) sel.value=r;
 }
 function autoSide(){var en=parseFloat(document.getElementById('oEntry').value)||0,cl=parseFloat(document.getElementById('oClose').value)||0,sl=parseFloat(document.getElementById('oSL').value)||0,tp=parseFloat(document.getElementById('oTP').value)||0;if(en&&sl){setSide(en>sl?'Long':'Short');}}
-var FUTURES_ASSETS={MNQ1:true,NQ1:true,MGC1:true,GC1:true};
+var FUTURES_ASSETS={MNQ1:true,NQ1:true,MGC1:true,GC1:true,MES1:true,ES1:true,MCL1:true,CL1:true,MNQ:true,NQ:true,MGC:true,GC:true,MES:true,ES:true,MCL:true,CL:true};
 function calcRiskLots(){
   var risk=parseFloat(document.getElementById('oRisk').value)||0;
   var en=parseFloat(document.getElementById('oEntry').value)||0,sl=parseFloat(document.getElementById('oSL').value)||0;
@@ -4393,21 +4394,30 @@ function calcPnl(){
   var sl=parseFloat(document.getElementById('oSL').value)||0;
   var lotsEl=document.getElementById('oLots');
   var lots=parseFloat(lotsEl?lotsEl.value:'0')||0;
-  // ถ้า lots=0 แต่มี risk+entry+sl → คำนวณ lots ก่อน
-  if(!lots){
+  var asset=document.getElementById('oAsset').value;
+
+  // ถ้า lots=0 → ลอง calc จาก risk+entry+sl ก่อน
+  if(!lots && en && sl && asset){
     var risk=parseFloat(document.getElementById('oRisk').value)||0;
-    var asset2=document.getElementById('oAsset').value;
-    if(risk&&en&&sl&&asset2){
-      var diff2=Math.abs(en-sl);var pv2=POINT_VAL[asset2]||1;
-      if(diff2>0){
-        var calcLots=risk/(diff2*pv2);
-        if(FUTURES_ASSETS[asset2]) calcLots=Math.max(1,Math.round(calcLots));
-        lots=parseFloat(calcLots.toFixed(FUTURES_ASSETS[asset2]?0:2))||0;
-        if(lotsEl&&lots) lotsEl.value=lots.toFixed(FUTURES_ASSETS[asset2]?0:2);
+    var diff2=Math.abs(en-sl);
+    var pv2=POINT_VAL[asset]||1;
+    if(risk && diff2>0){
+      var calcLots=risk/(diff2*pv2);
+      if(FUTURES_ASSETS[asset]||asset.match(/MNQ|NQ|MES|ES|MGC|GC|MCL|CL/i)){
+        calcLots=Math.max(1,Math.round(calcLots));
+        lots=calcLots;
+        if(lotsEl) lotsEl.value=calcLots.toFixed(0);
+      } else {
+        lots=parseFloat(calcLots.toFixed(2))||0;
+        if(lotsEl&&lots) lotsEl.value=lots.toFixed(2);
       }
     }
+    // ถ้ายังไม่มี lots และ asset เป็น futures → default = 1
+    if(!lots && (FUTURES_ASSETS[asset]||asset.match(/MNQ|NQ|MES|ES|MGC|GC|MCL|CL/i))){
+      lots=1;
+      if(lotsEl) lotsEl.value='1';
+    }
   }
-  var asset=document.getElementById('oAsset').value;
 
   // Always sync side from entry/sl before calculating
   if(en&&sl){ setSide(en>sl?'Long':'Short'); }
