@@ -2600,6 +2600,17 @@ async function syncFromSheet(onDone){
         if(row.key === 'trade_templates') { _loadTemplatesFromSettings(v); }
         if(row.key === 'entry_defaults_journal'){ try{ lsSet('tj_entry_def_journal',v); }catch(e){} }
         if(row.key === 'weekly_goals'){ try{ _weeklyGoals=JSON.parse(v); lsSet('tj_weekly_goals',v); }catch(e){} }
+        if(row.key === 'behavior_tags'){
+          try{
+            var bt=JSON.parse(v);
+            if(Array.isArray(bt)&&bt.length){
+              _behaviorTagPresets=bt;
+              lsSet(_BEHAVIOR_TAG_KEY,v);
+              // Re-render tag helpers if already injected
+              ['oNote','nComment','dtNote'].forEach(function(id){ if(document.getElementById('_tagHelper_'+id)) _renderBehaviorTagHelper(id); });
+            }
+          }catch(e){}
+        }
         if(row.key === 'account_size'){ lsSet('tj_account_size',v); }
         if(row.key === 'risk_pct'){ lsSet('tj_risk_pct',v); }
         if(row.key === 'theme'){ lsSet('tj_theme',v); }
@@ -2717,13 +2728,7 @@ async function syncFromSheet(onDone){
     _syncInProgress = false;
     setConn(true);
     if(sheetRes){ sheetRes.style.color='var(--green)'; sheetRes.textContent='✅ Sync เสร็จแล้ว!'; }
-    // Re-render ตาม active view ที่ user อยู่ตอนนี้
     renderCal(); updateStats(); updateRecent();
-    if(typeof _activeView !== 'undefined'){
-      if(_activeView === 'weekly'){ renderWeekly(); drawEQW(); }
-      else if(_activeView === 'dashboard'){ renderDashboard(); }
-      else { drawEQ(); }
-    }
     // Auto-load today in right sidebar if there's data
     var _todayKey = dk(new Date());
     if(S.sessions[_todayKey] || (S.trades[_todayKey] && S.trades[_todayKey].length)){
@@ -2856,15 +2861,14 @@ function getPortfolioKey(dateKey){return S.currentPortfolio+'__'+dateKey;}
 function getCurrentSessions(){return S.sessions;}
 // Portfolio data are stored with prefix: port_ID_sessions / port_ID_trades
 function getPortSessions(){
-  // ถ้า S.sessions มีข้อมูลใน memory แล้ว (หลัง sync) → ใช้เลย
-  if(S.sessions && Object.keys(S.sessions).length) return S.sessions;
+  // ถ้ามี Sheet และ S.sessions มีข้อมูลแล้ว → ใช้ memory โดยตรง
+  if(_supabase && S.sessions && Object.keys(S.sessions).length) return S.sessions;
   var k='port_'+S.currentPortfolio+'_s';
   try{return JSON.parse(localStorage.getItem(k)||'{}');}catch(e){return {};}
 }
 function getPortTrades(){
-  // ถ้า S.trades มีข้อมูลใน memory แล้ว (หลัง sync) → ใช้เลย
-  if(S.trades && Object.keys(S.trades).length) return S.trades;
-  // อ่านจาก localStorage (cache ที่ import/persist เขียนไว้)
+  // ถ้ามี Sheet และ S.trades มีข้อมูลแล้ว → ใช้ memory โดยตรง
+  if(_supabase && S.trades && Object.keys(S.trades).length) return S.trades;
   var k='port_'+S.currentPortfolio+'_t';
   try{
     var raw=JSON.parse(lsGet(k)||'{}');
@@ -3637,9 +3641,7 @@ function dk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate(
 function fmtD(d){return MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();}
 function wkNum(d){var j=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()+4-day);var y=new Date(Date.UTC(j.getUTCFullYear(),0,1));return Math.ceil(((j-y)/86400000+1)/7);}
 
-var _activeView = 'daily'; // track ว่า view ไหน active อยู่
 function switchView(v){
-  _activeView = v;
   var dataView = document.getElementById('dataView');
   var daily=document.getElementById('dailyView');
   var weekly=document.getElementById('weeklyView');
@@ -3667,7 +3669,7 @@ function switchView(v){
   if(navDash) navDash.className='nav-item'+(v==='dashboard'?' active':'');
   if(v==='weekly'){renderWeekly();drawEQW();}
   else if(v==='dashboard'){ renderDashboard(); }
-  else{ renderCal(); drawEQ(); } // daily: always re-render calendar
+  else{drawEQ();}
   // Update mobile nav buttons
   ['daily','weekly','dashboard'].forEach(function(n){
     var btn = document.getElementById('_mb'+n.charAt(0).toUpperCase()+n.slice(1));
@@ -4344,6 +4346,11 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     document.getElementById('oNote').value='';
     document.getElementById('oImgLink').value='';
     document.getElementById('oImgPreview').style.display='none';
+    // Reset Setup Duration
+    var sdEl=document.getElementById('oSetupDur');if(sdEl)sdEl.value='';
+    // Reset behavior tag highlights in note helper
+    var tagHelper=document.getElementById('_tagHelper_oNote');
+    if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){b.style.background='';b.style.color='';b.style.borderColor='';});
     // Sliders
     document.getElementById('oEmoSlider').value=5;updateOrderEmo(5);
     document.getElementById('oDiscSlider').value=5;updateOrderDisc(5);
@@ -4384,7 +4391,22 @@ function calcPnl(){
   var cl=parseFloat(document.getElementById('oClose').value)||0;
   var tp=parseFloat(document.getElementById('oTP').value)||0;
   var sl=parseFloat(document.getElementById('oSL').value)||0;
-  var lots=parseFloat(document.getElementById('oLots').value)||0;
+  var lotsEl=document.getElementById('oLots');
+  var lots=parseFloat(lotsEl?lotsEl.value:'0')||0;
+  // ถ้า lots=0 แต่มี risk+entry+sl → คำนวณ lots ก่อน
+  if(!lots){
+    var risk=parseFloat(document.getElementById('oRisk').value)||0;
+    var asset2=document.getElementById('oAsset').value;
+    if(risk&&en&&sl&&asset2){
+      var diff2=Math.abs(en-sl);var pv2=POINT_VAL[asset2]||1;
+      if(diff2>0){
+        var calcLots=risk/(diff2*pv2);
+        if(FUTURES_ASSETS[asset2]) calcLots=Math.max(1,Math.round(calcLots));
+        lots=parseFloat(calcLots.toFixed(FUTURES_ASSETS[asset2]?0:2))||0;
+        if(lotsEl&&lots) lotsEl.value=lots.toFixed(FUTURES_ASSETS[asset2]?0:2);
+      }
+    }
+  }
   var asset=document.getElementById('oAsset').value;
 
   // Always sync side from entry/sl before calculating
@@ -7754,16 +7776,7 @@ function confirmFundedImport(){
     batchTrades.push(Object.assign({date:dk,portfolio:S.currentPortfolio},obj));
     count++;
   });
-  persistPort();
-  // Force localStorage cache เสมอ — เพื่อให้ Daily/Weekly render ได้ทันทีแม้มี Supabase
-  try{ lsSet('port_'+S.currentPortfolio+'_t', JSON.stringify(S.trades)); }catch(e){}
-  try{ lsSet('port_'+S.currentPortfolio+'_s', JSON.stringify(S.sessions)); }catch(e){}
-  updateStats(); renderCal(); updateRecent(); renderTodayOrders();
-  // Re-render active view ด้วย (กรณีอยู่ที่ weekly/dashboard)
-  if(typeof _activeView !== 'undefined'){
-    if(_activeView === 'weekly') renderWeekly();
-    else if(_activeView === 'dashboard') setTimeout(renderDashboard, 0);
-  }
+  persistPort();updateStats();renderCal();updateRecent();renderTodayOrders();
   document.getElementById('fundedImportModal').remove();
   var lbl={topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'}[_fundedBroker]||_fundedBroker;
   showToast('✅ Import '+count+' trades จาก '+lbl+' แล้ว','success');
@@ -8826,26 +8839,99 @@ function _renderTagChips(tags){
     return chip.outerHTML;
   }).join('');
 }
-// Tag quick-add helper in note field
+// Tag quick-add helper in note field — แก้ไขได้ + sync ไป Data Mode
+var _behaviorTagPresets = null; // null = ใช้ default
+var _BEHAVIOR_TAG_KEY = 'tj_behavior_tags';
+function _getBehaviorTags(){
+  if(!_behaviorTagPresets){
+    try{ var raw=localStorage.getItem(_BEHAVIOR_TAG_KEY); _behaviorTagPresets=raw?JSON.parse(raw):null; }catch(e){}
+  }
+  return _behaviorTagPresets||['#FOMO','#revenge','#perfect','#early','#late','#hesitate','#impatient'];
+}
+function _saveBehaviorTags(arr){
+  _behaviorTagPresets=arr;
+  var json=JSON.stringify(arr);
+  try{ localStorage.setItem(_BEHAVIOR_TAG_KEY,json); }catch(e){}
+  // Sync to Supabase settings
+  if(_supabase) sendSheet('saveSettings',{key:'behavior_tags', value:json});
+}
+function _renderBehaviorTagHelper(noteElId){
+  var wrap=document.getElementById('_tagHelper_'+noteElId); if(!wrap) return;
+  var noteEl=document.getElementById(noteElId); if(!noteEl) return;
+  wrap.innerHTML='';
+  var tags=_getBehaviorTags();
+  // Tag chips
+  var chipsWrap=document.createElement('div');
+  chipsWrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;flex:1;';
+  tags.forEach(function(tag){
+    var btn=document.createElement('button');
+    btn.textContent=tag; btn.type='button';
+    btn.style.cssText='background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-muted);border-radius:20px;font-size:10px;padding:1px 7px;cursor:pointer;transition:all .15s;';
+    // Check if already in note
+    if((noteEl.value||'').indexOf(tag)>=0){ btn.style.background='var(--accent-dim)'; btn.style.color='var(--accent)'; btn.style.borderColor='var(--accent)'; }
+    btn.onclick=function(){
+      var cur=noteEl.value||'';
+      if(cur.indexOf(tag)>=0){
+        // Toggle off — remove tag
+        noteEl.value=cur.replace(new RegExp('\\s*'+tag.replace('#','\\#'),'g'),'').trim();
+        btn.style.background=''; btn.style.color=''; btn.style.borderColor='';
+      } else {
+        noteEl.value=(cur+' '+tag).trim();
+        btn.style.background='var(--accent-dim)'; btn.style.color='var(--accent)'; btn.style.borderColor='var(--accent)';
+      }
+      // Sync to Data Mode note if open
+      var dtNote=document.getElementById('dtNote');
+      if(dtNote&&document.getElementById('mDataTrade')&&document.getElementById('mDataTrade').classList.contains('open')){
+        dtNote.value=noteEl.value;
+      }
+    };
+    chipsWrap.appendChild(btn);
+  });
+  wrap.appendChild(chipsWrap);
+  // Edit button
+  var editBtn=document.createElement('button');
+  editBtn.type='button'; editBtn.textContent='✎';
+  editBtn.title='แก้ไข Tags';
+  editBtn.style.cssText='background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:20px;font-size:10px;padding:1px 6px;cursor:pointer;flex-shrink:0;';
+  editBtn.onclick=function(){ _openBehaviorTagEditor(noteElId); };
+  wrap.appendChild(editBtn);
+}
 function _injectTagHelper(noteElId){
-  var presets=['#FOMO','#revenge','#perfect','#early','#late','#hesitate','#impatient'];
-  var existing=document.getElementById('_tagHelper_'+noteElId); if(existing) return;
+  var existing=document.getElementById('_tagHelper_'+noteElId); if(existing){ _renderBehaviorTagHelper(noteElId); return; }
   var noteEl=document.getElementById(noteElId); if(!noteEl) return;
   var wrap=document.createElement('div');
   wrap.id='_tagHelper_'+noteElId;
-  wrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;';
-  presets.forEach(function(tag){
-    var btn=document.createElement('button');
-    btn.textContent=tag; btn.type='button';
-    btn.style.cssText='background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-muted);border-radius:20px;font-size:10px;padding:1px 7px;cursor:pointer;';
-    btn.onclick=function(){
-      var cur=noteEl.value||'';
-      if(cur.indexOf(tag)<0) noteEl.value=(cur+' '+tag).trim();
-      btn.style.background='var(--accent-dim)'; btn.style.color='var(--accent)'; btn.style.borderColor='var(--accent)';
-    };
-    wrap.appendChild(btn);
-  });
+  wrap.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:5px;';
   noteEl.parentNode.appendChild(wrap);
+  _renderBehaviorTagHelper(noteElId);
+}
+function _openBehaviorTagEditor(callerNoteId){
+  var existing=document.getElementById('_btagEditorModal');if(existing)existing.remove();
+  var tags=_getBehaviorTags();
+  var modal=document.createElement('div');
+  modal.id='_btagEditorModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;width:340px;max-width:95vw;position:relative;">'
+    +'<div style="font-size:13px;font-weight:600;margin-bottom:10px;">✎ แก้ไข Behavior Tags</div>'
+    +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:8px;">แก้ไข tags ด้านล่าง (คั่นด้วย Enter หรือ comma) — จะ sync ไป Data Mode ด้วย</div>'
+    +'<textarea id="_btagEditorArea" style="width:100%;height:110px;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;color:var(--text-primary);padding:8px;font-size:12px;font-family:var(--font-mono);resize:vertical;box-sizing:border-box;">'+tags.join('\n')+'</textarea>'
+    +'<div style="display:flex;gap:7px;margin-top:10px;justify-content:flex-end;">'
+    +'<button id="_btagSaveBtn" class="btn-primary" style="font-size:12px;padding:5px 14px;">✅ บันทึก</button>'
+    +'<button onclick="document.getElementById(\'_btagEditorModal\').remove()" class="btn-sm" style="font-size:12px;">ยกเลิก</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  document.getElementById('_btagSaveBtn').onclick=function(){
+    var raw=document.getElementById('_btagEditorArea').value;
+    var newTags=raw.split(/[\n,]+/).map(function(t){return t.trim();}).filter(function(t){return t;});
+    // Ensure all start with #
+    newTags=newTags.map(function(t){return t.startsWith('#')?t:'#'+t;});
+    _saveBehaviorTags(newTags);
+    modal.remove();
+    // Re-render all tag helpers
+    ['oNote','nComment','dtNote'].forEach(function(id){ _renderBehaviorTagHelper(id); });
+    showToast('✅ อัปเดต Tags แล้ว','success');
+  };
+  modal.addEventListener('mousedown',function(e){if(e.target===modal)modal.remove();});
 }
 
 
@@ -10696,6 +10782,17 @@ function dtOpenAdd(){
   document.querySelectorAll('#dtSessionTagRow .tag').forEach(function(el){el.classList.remove('active');});
   var emo=document.getElementById('dtEmoSlider');if(emo)emo.value=5;dtUpdateEmo(5);
   var disc=document.getElementById('dtDiscSlider');if(disc)disc.value=5;dtUpdateDisc(5);
+  // Inject behavior tag helper into dtNote
+  setTimeout(function(){
+    if(typeof _injectTagHelper==='function'){
+      _injectTagHelper('dtNote');
+      // Reset tag highlights
+      var tagHelper=document.getElementById('_tagHelper_dtNote');
+      if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){
+        if(b.textContent!=='✎'){b.style.background='';b.style.color='';b.style.borderColor='';}
+      });
+    }
+  },150);
   dtAutoSession();
   // Update prov badge
   var badge=document.getElementById('dtProvBadge');
