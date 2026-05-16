@@ -663,6 +663,7 @@ var _supabase = null;
   <div class="topbar-center">
     <button class="view-btn active" id="btnDaily" onclick="switchView('daily')">📅 Daily</button>
     <button class="view-btn" id="btnWeekly" onclick="switchView('weekly')">📊 Weekly</button>
+    <button class="view-btn" id="btnDash" onclick="switchView('dashboard')">📊 Dashboard</button>
   </div>
   <div class="topbar-right">
     <div onclick="dtToggleDataPanel()" id="btnDataToggle" title="เปิด/ปิด Data Mode" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:20px;transition:all .2s;background:none;user-select:none;">
@@ -3654,6 +3655,8 @@ function switchView(v){
   }
   document.getElementById('btnDaily').className='view-btn'+(v==='daily'?' active':'');
   document.getElementById('btnWeekly').className='view-btn'+(v==='weekly'?' active':'');
+  var btnDash = document.getElementById('btnDash');
+  if(btnDash) btnDash.className='view-btn'+(v==='dashboard'?' active':'');
   document.getElementById('navDaily').className='nav-item'+(v==='daily'?' active':'');
   document.getElementById('navWeekly').className='nav-item'+(v==='weekly'?' active':'');
   var navDash = document.getElementById('navDash');
@@ -12690,6 +12693,11 @@ function dtToggleDataPanel(){
     (async function(){ await dsLoad(); await dtLoad(false); dtRender(); })();
   } else {
     panel.classList.remove('open');
+    panel.style.zIndex = '';
+    panel.style.display = 'none';
+    // Restore settings menu button if it was hidden
+    var menuBtnWrap = document.getElementById('menuBtn');
+    if(menuBtnWrap && menuBtnWrap.parentElement) menuBtnWrap.parentElement.style.display = '';
     if(track){track.style.background='var(--bg-input)';track.style.borderColor='var(--border)';}
     if(thumb){thumb.style.left='2px';thumb.style.background='var(--text-muted)';}
     if(label){label.style.color='var(--text-muted)';}
@@ -12706,15 +12714,11 @@ function dtToggleDataPanel(){
     if(layout2){ layout2.classList.remove('left-collapsed','right-collapsed'); }
     updateSidebarBtnLeft&&updateSidebarBtnLeft();
     updateSidebarBtnRight&&updateSidebarBtnRight();
-    // Restore Settings (⚙) button visibility
-    var menuBtn2=document.getElementById('menuBtn');
-    if(menuBtn2 && menuBtn2.parentElement) menuBtn2.parentElement.style.display='';
-    // Reset dataView z-index so it no longer covers other views
-    panel.style.zIndex='';
     // Reset pending filter restore
     window._dtPendingFilterRestore=null;
-    // Restore the active view immediately
-    switchView(_activeView || 'daily');
+    // Restore the previously active view (daily/weekly/dashboard)
+    var restoreView = typeof _activeView !== 'undefined' ? _activeView : 'daily';
+    switchView(restoreView);
     // Rebuild Chart.js charts
     setTimeout(function(){ drawEQ(); drawEQW(); }, 100);
   }
