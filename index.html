@@ -2674,7 +2674,7 @@ async function syncFromSheet(onDone){
         // session: stored as sessions column (comma-separated)
         t.session    = r.sessions || '';
         // day: compute from date
-        t.day        = r.date ? DT_DAYS[new Date(r.date).getDay()] : '';
+        t.day        = r.date ? DT_DAYS[new Date(r.date.substring(0,10)+'T12:00').getDay()] : '';
         // zoneMit: DB has no zone_mit column — store in note field convention or leave blank
         t.zoneMit    = '';
         t.portfolio  = r.portfolio || S.currentPortfolio;
@@ -4292,6 +4292,48 @@ function dismissRiskWarn(){
   var riskInp=document.getElementById('oRisk');if(riskInp){riskInp.style.borderColor='';riskInp.style.color='';}
   var riskDot=document.getElementById('oRiskWarnDot');if(riskDot)riskDot.style.display='none';
 }
+// ── Shared form reset — ใช้ได้ทั้งจาก toggleOF, addTrade, AI Scan ──
+function _resetOrderForm(){
+  // Numeric inputs
+  ['oEntry','oTP','oSL','oLots','oFees','oComm','oClose','oPnl','oMaxRR','oSetupDur','oNote','oImgLink','oTimePos'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  var feesEl=document.getElementById('oFees'); if(feesEl) delete feesEl.dataset.manualEdit;
+  var commEl=document.getElementById('oComm'); if(commEl) delete commEl.dataset.manualEdit;
+  var imgPrev=document.getElementById('oImgPreview'); if(imgPrev) imgPrev.style.display='none';
+  // Dates — reset to current time
+  var now=new Date(); var pad=function(n){return n<10?'0'+n:n;};
+  var fmt=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'T'+pad(now.getHours())+':'+pad(now.getMinutes());
+  var ed=document.getElementById('oEntryDate'); if(ed) ed.value=fmt;
+  var cd=document.getElementById('oCloseDate'); if(cd) cd.value=fmt;
+  // Dropdowns → Select
+  document.getElementById('oResultSel').value='BE';
+  document.getElementById('oContr').value='1';
+  ['oSetupClass','oCandle','oCode','oMode','oTF','oTrend','oZone','oConfirm','oFiboLevel'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  // Behavior tag highlights
+  var tagHelper=document.getElementById('_tagHelper_oNote');
+  if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){
+    if(b.textContent!=='✎'){b.style.background='';b.style.color='';b.style.borderColor='';}
+  });
+  // Sliders
+  var emoEl=document.getElementById('oEmoSlider'); if(emoEl){emoEl.value=5;updateOrderEmo(5);}
+  var discEl=document.getElementById('oDiscSlider'); if(discEl){discEl.value=5;updateOrderDisc(5);}
+  // Misc UI
+  _riskWarnDismissed=false;
+  var slPt=document.getElementById('oSLPoint'); if(slPt) slPt.textContent='';
+  var tpPt=document.getElementById('oTPPoint'); if(tpPt) tpPt.textContent='';
+  var warn=document.getElementById('riskWarnBar'); if(warn) warn.style.display='none';
+  var riskDot=document.getElementById('oRiskWarnDot'); if(riskDot) riskDot.style.display='none';
+  var ri=document.getElementById('oRisk'); if(ri){ri.style.borderColor='';ri.style.color='';}
+  var cb=document.getElementById('calcBar'); if(cb) cb.style.display='none';
+  S_result='BE'; S._editIdx=-1;
+  var ab=document.querySelector('#orderForm .btn-primary');
+  if(ab){ab.textContent='✓ Add Trade';ab.onclick=function(){addTrade();};}
+  if(typeof autoDetectSession==='function') setTimeout(autoDetectSession,100);
+}
+
 function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
   var f=document.getElementById('orderForm');
   var show=f.style.display==='none';
@@ -4306,15 +4348,7 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     // Session tags — clear all
     document.querySelectorAll('#oSessionTagRow .sess-wrap .tag').forEach(function(el){el.classList.remove('active');});
     var hint=document.getElementById('oSessionAIHint');if(hint)hint.style.display='none';
-    // Time fields
-    document.getElementById('oEntryDate').value=fmt;
-    document.getElementById('oCloseDate').value='';
-    document.getElementById('oTimePos').value='';
-    // Price fields
-    document.getElementById('oEntry').value='';
-    document.getElementById('oTP').value='';
-    document.getElementById('oSL').value='';
-    // Auto-fill from saved default risk if set
+    // Auto-fill default risk
     var _savedORisk = window._oDefaultRisk || parseFloat(localStorage.getItem('oDefaultRisk')||'');
     document.getElementById('oRisk').value = _savedORisk ? _savedORisk.toFixed(2) : '';
     if(_savedORisk){
@@ -4325,51 +4359,9 @@ function toggleOF(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
         if(sdb){sdb.style.background='var(--accent)';sdb.style.color='#fff';}
       },50);
     }
-    document.getElementById('oLots').value='';
-    document.getElementById('oComm').value='';
-    document.getElementById('oFees').value='';
-    // Reset manual edit flags for fees/comm
-    var feesEl=document.getElementById('oFees'); if(feesEl) delete feesEl.dataset.manualEdit;
-    var commEl=document.getElementById('oComm'); if(commEl) delete commEl.dataset.manualEdit;
-    document.getElementById('oClose').value='';
-    document.getElementById('oPnl').value='';
-
-    // ── Reset: inputs ที่ต้องว่างทุกครั้ง ──
-    ['oMaxRR','oSetupDur','oNote','oImgLink'].forEach(function(id){
-      var el=document.getElementById(id); if(el) el.value='';
-    });
-    var imgPrev=document.getElementById('oImgPreview'); if(imgPrev) imgPrev.style.display='none';
-
-    // ── Reset: dropdowns → กลับเป็น Select (value='') ──
-    ['oSetupClass','oCandle','oCode','oMode','oTF','oTrend','oZone','oConfirm','oFiboLevel'].forEach(function(id){
-      var el=document.getElementById(id); if(el) el.value='';
-    });
-    document.getElementById('oResultSel').value='BE';
-    document.getElementById('oContr').value='1';
-
-    // ── Reset: behavior tag highlights ──
-    var tagHelper=document.getElementById('_tagHelper_oNote');
-    if(tagHelper) tagHelper.querySelectorAll('button').forEach(function(b){
-      if(b.textContent!=='✎'){b.style.background='';b.style.color='';b.style.borderColor='';}
-    });
-
-    // ── Reset: sliders → 5 ──
-    document.getElementById('oEmoSlider').value=5; updateOrderEmo(5);
-    document.getElementById('oDiscSlider').value=5; updateOrderDisc(5);
-
-    // ── Reset: misc UI ──
-    _riskWarnDismissed=false;
+    // Reset ทุก field ผ่าน shared function
+    _resetOrderForm();
     if(_orderSessEditMode){_orderSessEditMode=false;var ob=document.getElementById('orderSessEditBtn');if(ob){ob.textContent='Edit';ob.style.color='';ob.style.borderColor='';}}
-    var slPt=document.getElementById('oSLPoint');if(slPt)slPt.textContent='';
-    var tpPt=document.getElementById('oTPPoint');if(tpPt)tpPt.textContent='';
-    var warn=document.getElementById('riskWarnBar');if(warn)warn.style.display='none';
-    var riskDot=document.getElementById('oRiskWarnDot');if(riskDot)riskDot.style.display='none';
-    var ri=document.getElementById('oRisk');if(ri){ri.style.borderColor='';ri.style.color='';}
-    var cb=document.getElementById('calcBar');if(cb)cb.style.display='none';
-    S_result='BE';
-    S._editIdx=-1;
-    var ab=document.querySelector('#orderForm .btn-primary');
-    if(ab){ab.textContent='✓ Add Trade';ab.onclick=function(){addTrade();};}
   }
 }
 function setSide(s){S.side=s;document.getElementById('sL').className='side-opt'+(s==='Long'?' active long':'');document.getElementById('sS').className='side-opt'+(s==='Short'?' active short':' short');}
@@ -4581,6 +4573,8 @@ function addTrade(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     updateStats();renderCal();updateRecent();renderTodayOrders();
     if(_supabase) sendSheet('saveTrade',Object.assign({date:S.mKey},trade));
     showToast('✅ เพิ่มออเดอร์แล้ว','success');
+    // Reset form ทันทีหลังบันทึก — พร้อมสำหรับออเดอร์ถัดไปหรือ AI Scan ใหม่
+    _resetOrderForm();
   });
 }
 
@@ -5263,6 +5257,9 @@ async function doScan(){
     var ASSETS=['MNQ1','NQ1','MGC1','GC1','ES1','MES1','XAU/USD','EURUSD','GBPUSD','USDJPY','BTCUSD'];
     var filled=[];
     var skipped=[];
+
+    // ── Reset form ก่อน fill ข้อมูลใหม่จาก AI scan ──
+    _resetOrderForm();
 
     // Asset
     if(d.asset){
@@ -9717,9 +9714,12 @@ function _groupBySession(trades){
     sessions.forEach(function(s){ grid[d][s]={pnl:0,count:0}; });
   });
   trades.forEach(function(t){
-    var dateStr=t.entry_date||t.close_date||'';
-    if(!dateStr) return;
-    var dt=new Date(dateStr);
+    // ใช้ date part เท่านั้น + T12:00 เพื่อป้องกัน UTC offset ทำให้วันผิด
+    var rawDate=t.entry_date||t.close_date||'';
+    if(!rawDate) return;
+    var dateOnly=rawDate.substring(0,10); // "YYYY-MM-DD"
+    if(!dateOnly||dateOnly.length<10) return;
+    var dt=new Date(dateOnly+'T12:00');
     if(isNaN(dt)) return;
     var day=days[dt.getDay()];
     var sess=(t.sessions||'');
@@ -10905,7 +10905,7 @@ function dtSaveTrade(){
   if(!entryDate){showToast('กรุณาใส่ Entry Date','error');return;}
   var dateOnly=entryDate.substring(0,10);
   var timeOnly=entryDate.substring(11,16);
-  var dayName=DT_DAYS[new Date(entryDate).getDay()];
+  var dayName=DT_DAYS[new Date(entryDate.substring(0,10)+'T12:00').getDay()];
   // Session: read from dtSessionTagRow tags
   var _dtSessArr=[];
   document.querySelectorAll('#dtSessionTagRow .tag.active').forEach(function(el){
