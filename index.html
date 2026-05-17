@@ -908,6 +908,14 @@ var _supabase = null;
             <select id="dtfFibo" onchange="dtSaveFilterState();dtRender()" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;"><option value="">All</option></select></div>
           <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">Duration (≤ นาที)</div>
             <input type="number" id="dtfDur" placeholder="ไม่จำกัด" min="0" oninput="dtSaveFilterState();dtRender()" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;"></div>
+          <!-- RR Range Filter -->
+          <div style="grid-column:span 2;"><div style="font-size:9px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;font-weight:700;">RR Range (เว้นว่าง = All)</div>
+            <div style="display:flex;gap:5px;align-items:center;">
+              <input type="number" id="dtfRRMin" placeholder="Min RR" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
+              <span style="color:var(--text-muted);font-size:11px;">–</span>
+              <input type="number" id="dtfRRMax" placeholder="Max RR" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
+            </div>
+          </div>
           <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">&#x23F0; Entry Time</div>
             <select id="dtfEntryTime" onchange="dtSaveFilterState();dtRender()" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
               <option value="">All</option>
@@ -1011,6 +1019,7 @@ var _supabase = null;
               <th id="dth_pnl" onclick="dtSortBy('pnl')" style="padding:7px 6px;text-align:right;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">P&amp;L$ <span id="dthi_pnl" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_result" onclick="dtSortBy('result')" style="padding:7px 6px;text-align:center;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">Result <span id="dthi_result" style="font-size:9px;opacity:.5;"></span></th>
               <th id="dth_maxRR" onclick="dtSortBy('maxRR')" style="padding:7px 6px;text-align:right;color:var(--text-muted);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">MaxRR <span id="dthi_maxRR" style="font-size:9px;opacity:.5;"></span></th>
+              <th id="dth_rr" onclick="dtSortBy('rr')" style="padding:7px 6px;text-align:right;color:var(--accent);font-weight:700;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--accent)'">RR <span id="dthi_rr" style="font-size:9px;opacity:.5;"></span></th>
               <th style="padding:7px 6px;text-align:center;color:var(--text-muted);font-weight:600;">AI</th>
               <th style="padding:7px 6px;text-align:center;color:var(--text-muted);font-weight:600;">⚙</th>
             </tr>
@@ -1352,8 +1361,8 @@ var _supabase = null;
               <input class="form-input" id="oTimePos" placeholder="--" readonly style="opacity:.7;">
             </div>
             <div class="form-field">
-              <label>Setup Duration <span style="font-size:9px;color:var(--text-muted)" title="เวลาตั้งแต่เริ่มวิเคราะห์จนถึงเข้า Order">⏱</span></label>
-              <input class="form-input" id="oSetupDur" placeholder="e.g. 5m, 1h 30m">
+              <label>Setup Duration <span style="font-size:9px;color:var(--red)">*</span> <span style="font-size:9px;color:var(--text-muted)" title="เวลาตั้งแต่เริ่มวิเคราะห์จนถึงเข้า Order">⏱</span></label>
+              <input class="form-input" id="oSetupDur" placeholder="e.g. 5m, 1h 30m" style="border-color:var(--amber);" oninput="if(this.value.trim()){this.style.borderColor='';} else {this.style.borderColor='var(--amber)';}">
             </div>
           </div>
           <!-- Entry/Close Date & Time -->
@@ -1397,6 +1406,12 @@ var _supabase = null;
               </select>
             </div>
             <div class="form-field"><label>Max RR</label><input class="form-input" id="oMaxRR" type="number" step="0.1" placeholder="e.g. 3.0"></div>
+          </div>
+          <!-- RR auto-calc display -->
+          <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:16px;font-size:11px;margin-bottom:4px;" id="oRRBar">
+            <span style="color:var(--text-muted);">RR (auto)</span>
+            <span id="oRRVal" style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:13px;">—</span>
+            <span style="color:var(--text-muted);font-size:10px;">จาก Entry → TP / Entry → SL</span>
           </div>
           <div class="fg2">
             <div class="form-field"><label>Contract Size</label>
@@ -4329,6 +4344,9 @@ function _resetOrderForm(){
   var ri=document.getElementById('oRisk'); if(ri){ri.style.borderColor='';ri.style.color='';}
   var cb=document.getElementById('calcBar'); if(cb) cb.style.display='none';
   S_result='BE'; S._editIdx=-1;
+  // Reset RR display
+  var rrEl=document.getElementById('oRRVal'); if(rrEl){rrEl.textContent='—';rrEl.style.color='var(--accent)';}
+  var dtRREl=document.getElementById('dtRRVal'); if(dtRREl){dtRREl.textContent='—';dtRREl.style.color='var(--accent)';}
   var ab=document.querySelector('#orderForm .btn-primary');
   if(ab){ab.textContent='✓ Add Trade';ab.onclick=function(){addTrade();};}
   if(typeof autoDetectSession==='function') setTimeout(autoDetectSession,100);
@@ -4450,9 +4468,35 @@ function updateResult(){
   var pnl=parseFloat(document.getElementById('oPnl').value)||0;
   if(pnl>0) setResult('Win'); else if(pnl<0) setResult('Loss'); else setResult('BE');
 }
-function calcTimeInPos(){
-  var ed=document.getElementById('oEntryDate').value,cd=document.getElementById('oCloseDate').value;
-  if(ed&&cd){var ms=new Date(cd)-new Date(ed);if(ms>0){var totalMins=Math.floor(ms/60000);var d=Math.floor(totalMins/1440);var h=Math.floor((totalMins%1440)/60);var m=totalMins%60;var result='';if(d>0)result+=d+'d ';if(h>0||d>0)result+=h+'h ';result+=m+'m';document.getElementById('oTimePos').value=result.trim();}else{document.getElementById('oTimePos').value='';}}
+function calcRR(){
+  var en=parseFloat(document.getElementById('oEntry').value)||0;
+  var tp=parseFloat(document.getElementById('oTP').value)||0;
+  var sl=parseFloat(document.getElementById('oSL').value)||0;
+  var rrEl=document.getElementById('oRRVal');
+  if(!rrEl) return 0;
+  if(en&&tp&&sl&&Math.abs(en-sl)>0){
+    var rr=Math.abs(tp-en)/Math.abs(en-sl);
+    rrEl.textContent='1:'+rr.toFixed(2);
+    rrEl.style.color=rr>=2?'var(--green)':rr>=1?'var(--amber)':'var(--red)';
+    return rr;
+  }
+  rrEl.textContent='—'; rrEl.style.color='var(--accent)';
+  return 0;
+}
+function calcDTRR(){
+  var en=parseFloat(document.getElementById('dtEntry').value)||0;
+  var tp=parseFloat(document.getElementById('dtTP').value)||0;
+  var sl=parseFloat(document.getElementById('dtSL2').value)||0;
+  var rrEl=document.getElementById('dtRRVal');
+  if(!rrEl) return 0;
+  if(en&&tp&&sl&&Math.abs(en-sl)>0){
+    var rr=Math.abs(tp-en)/Math.abs(en-sl);
+    rrEl.textContent='1:'+rr.toFixed(2);
+    rrEl.style.color=rr>=2?'var(--green)':rr>=1?'var(--amber)':'var(--red)';
+    return rr;
+  }
+  rrEl.textContent='—'; rrEl.style.color='var(--accent)';
+  return 0;
 }
 function calcAll(){
   var asset=document.getElementById('oAsset').value;
@@ -4519,6 +4563,7 @@ function calcAll(){
     }
   } else { bar.style.display='none';var warn=document.getElementById('riskWarnBar');if(warn)warn.style.display='none';var ri=document.getElementById('oRisk');if(ri){ri.style.borderColor='';ri.style.color='';}var rd=document.getElementById('oRiskWarnDot');if(rd)rd.style.display='none'; }
   calcPnl();
+  calcRR();
 }
 function previewImgLink(v){
   var p=document.getElementById('oImgPreview'),a=document.getElementById('oImgAnchor');
@@ -4548,6 +4593,7 @@ function addTrade(){if(_isReadOnly){showToast('🔒 โหมดดูเท่�
     note:document.getElementById('oNote').value,
     imgLink:document.getElementById('oImgLink').value,
     maxRR:document.getElementById('oMaxRR').value||'',
+    rr:(function(){var en=parseFloat(document.getElementById('oEntry').value)||0,tp=parseFloat(document.getElementById('oTP').value)||0,sl=parseFloat(document.getElementById('oSL').value)||0;return(en&&tp&&sl&&Math.abs(en-sl)>0)?parseFloat((Math.abs(tp-en)/Math.abs(en-sl)).toFixed(2)):0;})(),
     setupClass:document.getElementById('oSetupClass').value||'',
     candle:document.getElementById('oCandle').value||'',
     code:document.getElementById('oCode').value||'',
@@ -5787,6 +5833,7 @@ function _tradeToRow(t, uid){
     result:         t.result   || 'BE',
     risk:           t.risk     || null,
     max_rr:         t.maxRR    || null,
+    rr:             t.rr       || null,
     time_in_pos:    t.timeInPos || null,
     setup_duration: t.setupDuration || null,
     entry_date:     entryDatetime || null,
@@ -9742,7 +9789,7 @@ function _groupBySession(trades){
     var day=days[dt.getDay()];
     // Debug: log trades that fall on Sat/Sun
     if(day==='Sat'||day==='Sun'){
-      console.warn('[Heatmap] '+day+' trade — entry_date raw:',rawDate,' dateOnly:',dateOnly,' pnl:',t.pnl,' sessions:',t.sessions,' portfolio:',t.portfolio);
+      // (debug removed)
     }
     var sess=(t.sessions||t.session||'');
     sessions.forEach(function(s){
@@ -10585,6 +10632,7 @@ function dtCalcAll(){
   if(cRisk) cRisk.textContent=risk?'$'+risk.toFixed(0):'-';
   if(cRR) cRR.textContent=rr?'1:'+rr.toFixed(2):'-';
   if(cLots) cLots.textContent=lots?lots.toFixed(2)+' lots':'-';
+  calcDTRR();
 }
 
 // ── Sliders ──
@@ -10952,6 +11000,7 @@ function dtSaveTrade(){
     entry:gv('dtEntry'),tp:gv('dtTP'),sl:gv('dtSL2'),
     risk:gv('dtRisk'),lots:gv('dtLots'),pnl:gv('dtPnl'),
     result:gs('dtResult'),maxRR:gv('dtMaxRR'),
+    rr:(function(){var en=parseFloat(gv('dtEntry'))||0,tp=parseFloat(gv('dtTP'))||0,sl=parseFloat(gv('dtSL2'))||0;return(en&&tp&&sl&&Math.abs(en-sl)>0)?parseFloat((Math.abs(tp-en)/Math.abs(en-sl)).toFixed(2)):0;})(),
     fiboLevel:gs('dtFiboLevel'),
     emo:DT.emo,disc:DT.disc,
     discipline:'วินัย '+DT.disc+'/10',
@@ -11041,6 +11090,8 @@ function dtUpdateFilterBadge(){
     var el=document.getElementById(id);if(el&&el.value)count++;
   });
   var dur=document.getElementById('dtfDur');if(dur&&dur.value)count++;
+  var rrMin=document.getElementById('dtfRRMin');if(rrMin&&rrMin.value!=='')count++;
+  var rrMax=document.getElementById('dtfRRMax');if(rrMax&&rrMax.value!=='')count++;
   var fibo=document.getElementById('dtfFibo');if(fibo&&fibo.value)count++;
   var inc=document.getElementById('dtIncludePort');if(inc&&inc.checked)count++;
   badge.style.display=count?'inline':'none';
@@ -11405,6 +11456,8 @@ function dtFiltered(){
   var fClass=gv('dtfClass');
   var fModel=gv('dtfModel');
   var fDur=parseFloat(gv('dtfDur'))||0;
+  var fRRMin=gv('dtfRRMin')!==''?parseFloat(gv('dtfRRMin')):null;
+  var fRRMax=gv('dtfRRMax')!==''?parseFloat(gv('dtfRRMax')):null;
   var fEntryTime=gv('dtfEntryTime'); // เช่น "06:01-09:00"
   var fCloseTime=gv('dtfCloseTime')||''; // Close Time filter
   var src=[];
@@ -11551,6 +11604,13 @@ function dtFiltered(){
           }
         }
       }
+    }
+    // ── RR range filter ────────────────────────────────────────────
+    if(fRRMin!==null||fRRMax!==null){
+      var tRR=parseFloat(t.rr)||0;
+      if(!tRR) return false; // ถ้าไม่มี RR → ไม่ผ่านเมื่อ filter เปิด
+      if(fRRMin!==null&&tRR<fRRMin) return false;
+      if(fRRMax!==null&&tRR>fRRMax) return false;
     }
     return true;
   }).sort(function(a,b){
@@ -11714,6 +11774,7 @@ function dtRender(){
       +'<td style="padding:6px;text-align:right;font-weight:700;font-family:var(--font-mono);font-size:11px;color:'+pnlColor+';">'+pnlStr+'</td>'
       +'<td style="padding:6px;text-align:center;"><span style="font-size:10px;font-weight:600;color:'+resultColor+';">'+(t.result||'-')+'</span></td>'
       +'<td style="padding:6px;text-align:right;font-family:var(--font-mono);font-size:10px;">'+(t.maxRR||'-')+'</td>'
+      +'<td style="padding:6px;text-align:right;font-family:var(--font-mono);font-size:11px;font-weight:700;color:'+(t.rr?(t.rr>=2?'var(--green)':t.rr>=1?'var(--amber)':'var(--red)'):'var(--text-muted)')+'">'+(t.rr?'1:'+parseFloat(t.rr).toFixed(2):'-')+'</td>'
       +'<td style="padding:6px;text-align:center;">'+imgBtn+'</td>'
       +'<td style="padding:6px;text-align:center;"><button onclick="dtOpenEdit('+absIdx+')" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:10px;transition:all .1s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-muted)\'">✎</button>'
       +' <button onclick="dtDeleteRow('+absIdx+')" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:10px;transition:all .1s;" onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-muted)\'">✕</button></td>'
@@ -12077,6 +12138,8 @@ function dtResetFilters(){
     if(el){ el.selectedIndex=0; el.value=''; }
   });
   var dur=document.getElementById('dtfDur');if(dur)dur.value='';
+  var rrMin=document.getElementById('dtfRRMin');if(rrMin)rrMin.value='';
+  var rrMax=document.getElementById('dtfRRMax');if(rrMax)rrMax.value='';
   lsRem('dt_filter_state'); lsRem('dt_filters');
   var inc=document.getElementById('dtIncludePort');if(inc)inc.checked=false;
   lsRem('dt_filters');
@@ -13305,8 +13368,8 @@ if(document.readyState==='loading'){
           <input class="form-input" id="dtTimePos" placeholder="--" readonly style="opacity:.7;">
         </div>
         <div class="form-field">
-          <label>Setup Duration <span style="font-size:9px;color:var(--text-muted)">⏱</span></label>
-          <input class="form-input" id="dtSetupDur" placeholder="e.g. 5m, 1h 30m">
+          <label>Setup Duration <span style="font-size:9px;color:var(--red)">*</span> <span style="font-size:9px;color:var(--text-muted)">⏱</span></label>
+          <input class="form-input" id="dtSetupDur" placeholder="e.g. 5m, 1h 30m" style="border-color:var(--amber);" oninput="if(this.value.trim()){this.style.borderColor='';} else {this.style.borderColor='var(--amber)';}">
         </div>
       </div>
 
@@ -13379,6 +13442,12 @@ if(document.readyState==='loading'){
           <select class="form-input" id="dtResult" onchange="dtCalcAll()"><option value="">Select</option></select>
         </div>
         <div class="form-field"><label>Max RR</label><input class="form-input" id="dtMaxRR" type="number" step="0.01" placeholder="0.00"></div>
+      </div>
+      <!-- RR auto-calc -->
+      <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:16px;font-size:11px;margin-bottom:4px;">
+        <span style="color:var(--text-muted);">RR (auto)</span>
+        <span id="dtRRVal" style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:13px;">—</span>
+        <span style="color:var(--text-muted);font-size:10px;">จาก Entry → TP / Entry → SL</span>
       </div>
 
       <!-- Contract Size + Setup Class -->
