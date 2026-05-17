@@ -909,11 +909,11 @@ var _supabase = null;
           <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">Duration (≤ นาที)</div>
             <input type="number" id="dtfDur" placeholder="ไม่จำกัด" min="0" oninput="dtSaveFilterState();dtRender()" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;"></div>
           <!-- RR Range Filter -->
-          <div style="grid-column:span 2;"><div style="font-size:9px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;font-weight:700;">RR Range (เว้นว่าง = All)</div>
-            <div style="display:flex;gap:5px;align-items:center;">
-              <input type="number" id="dtfRRMin" placeholder="Min RR" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
-              <span style="color:var(--text-muted);font-size:11px;">–</span>
-              <input type="number" id="dtfRRMax" placeholder="Max RR" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:4px 6px;height:28px;">
+          <div><div style="font-size:9px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;font-weight:700;">RR Range</div>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <input type="number" id="dtfRRMin" placeholder="Min" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="width:52px;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:3px 5px;height:28px;">
+              <span style="color:var(--text-muted);font-size:11px;flex-shrink:0;">–</span>
+              <input type="number" id="dtfRRMax" placeholder="Max" min="0" step="0.1" oninput="dtSaveFilterState();dtRender()" style="width:52px;background:var(--bg-input);border:1px solid var(--accent);color:var(--text-primary);border-radius:5px;font-size:11px;padding:3px 5px;height:28px;">
             </div>
           </div>
           <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;">&#x23F0; Entry Time</div>
@@ -2322,18 +2322,12 @@ function _tradeFromRow(r){
     result:        r.result        || '',
     risk:          r.risk          || '',
     maxRR:         r.max_rr        || '',
+    rr:            parseFloat(r.rr) || 0,
     timeInPos:     r.time_in_pos   || '',
     setupDuration: r.setup_duration|| '',
     entryDate:     r.entry_date    || '',
     closeDate:     r.close_date    || '',
     setupClass:    r.setup_class   || '',
-    candle:        r.candle        || '',
-    code:          r.code          || '',
-    mode:          r.mode          || '',
-    tf:            r.tf            || '',
-    trend:         r.trend         || '',
-    zone:          r.zone          || '',
-    zoneMit:       r.trend         || '',
     confirm:       r.confirm       || '',
     session:       _sess,
     sessions:      _sess,
@@ -5894,6 +5888,7 @@ function _tradeFromRow(r){
     result:        r.result        || '',
     risk:          r.risk          || '',
     maxRR:         r.max_rr        || '',
+    rr:            parseFloat(r.rr) || 0,
     timeInPos:     r.time_in_pos   || '',
     setupDuration: r.setup_duration|| '',
     entryDate:     r.entry_date    || '',
