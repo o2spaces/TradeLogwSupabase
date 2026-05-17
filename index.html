@@ -2746,6 +2746,19 @@ async function syncFromSheet(onDone){
         if(typeof renderDayDetail === 'function') renderDayDetail();
       }
     }
+
+    // ── Background pre-cache all other portfolios (for Data Mode port_only/combined) ──
+    var _otherPorts = Object.keys(S.portfolios).filter(function(pid){ return pid !== S.currentPortfolio; });
+    if(_otherPorts.length && _supabase && uid){
+      _otherPorts.forEach(function(pid){
+        // Only fetch if not already cached
+        if(!lsGet('port_'+pid+'_t')){
+          _dtPortLoadPending[pid] = false; // reset so lazy load can run
+          _dtLazyLoadPortTrades(pid);
+        }
+      });
+    }
+
     if(onDone) onDone();
   } catch(err){
     _syncInProgress = false;
@@ -12100,13 +12113,31 @@ async function openPortSelectorModal(){
       DS.current = _dtSelectedDatasets[0];
       dsRenderSelector();
     }
-    // Pre-fetch trades+journal for all selected portfolios (clear cache to force re-fetch)
+    // Pre-fetch trades+journal for selected portfolios that aren't cached yet
     if(_dtViewMode==='port_only'||_dtViewMode==='combined'){
       _dtSelectedPorts.forEach(function(pid){
-        // Clear cache so _dtLazyLoadPortTrades will actually fetch
-        try{ lsRem('port_'+pid+'_t'); }catch(e){}
-        _dtPortLoadPending[pid] = false;
-        _dtLazyLoadPortTrades(pid);
+        // Only fetch if cache is missing (don't clear existing valid cache)
+        if(!lsGet('port_'+pid+'_t')){
+          _dtPortLoadPending[pid] = false;
+          _dtLazyLoadPortTrades(pid);
+        } else {
+          // Cache exists — still merge journal into S.journal if needed
+          if(_supabase){
+            var uid2 = _authSession && _authSession._sbUserId;
+            if(uid2){
+              _supabase.from('journal').select('*').eq('user_id',uid2).eq('portfolio',pid)
+                .then(function(jRes){
+                  if(!jRes.error && jRes.data && jRes.data.length){
+                    if(!S.journal) S.journal={};
+                    jRes.data.forEach(function(j){
+                      S.journal[(j.portfolio||pid)+'_'+(j.date||'')]=
+                        {noteHTML:j.note_html||'',notePlain:j.note_plain||''};
+                    });
+                  }
+                });
+            }
+          }
+        }
       });
     }
     // Force reload from Supabase when dataset selection changes
