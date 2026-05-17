@@ -11951,11 +11951,12 @@ function dtDeleteRow(visIdx){
   };
 }
 
-var _dtViewMode='data_only'; // 'data_only' | 'port_only' | 'combined'
+var _dtViewMode=(function(){try{return localStorage.getItem('tj_dt_viewmode')||'data_only';}catch(e){return 'data_only';}}()); // 'data_only' | 'port_only' | 'combined'
 var _dtSelectedPorts=[]; // selected portfolio IDs for combined/port_only mode
 
 function dtSetViewMode(mode){
   _dtViewMode=mode;
+  try{ localStorage.setItem('tj_dt_viewmode', mode); }catch(e){}
   var inc=document.getElementById('dtIncludePort');
   if(inc) inc.checked=(mode==='combined');
 }
@@ -12012,7 +12013,17 @@ async function openPortSelectorModal(){
       cb.type='checkbox';
       cb.checked=checked;
       cb.style.cssText='width:16px;height:16px;cursor:pointer;accent-color:var(--accent);';
-      cb.addEventListener('change',function(){dtTogglePort(pid,this.checked);dtRender();updatePortSelectorLabel();});
+      cb.addEventListener('change',function(){
+        dtTogglePort(pid,this.checked);
+        // Auto-switch: ถ้าติ๊ก port แต่ mode ยัง data_only → เปลี่ยนเป็น combined อัตโนมัติ
+        if(this.checked && _dtViewMode==='data_only'){
+          dtSetViewMode('combined');
+          // อัปเดต radio UI ด้วย
+          var rbs=document.querySelectorAll('input[name="_portViewMode"]');
+          rbs.forEach(function(r){r.checked=(r.value==='combined');});
+        }
+        dtRender();updatePortSelectorLabel();
+      });
       var sp=document.createElement('span');
       sp.textContent='📁 '+pname;
       lbl.appendChild(cb);
