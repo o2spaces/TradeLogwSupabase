@@ -9454,10 +9454,13 @@ async function renderDashboard(){
         if(window.DT && DT.trades){
           dtTrades=DT.trades.map(function(t){
             var dsId=t.dataset_id||'__DT_default__';
+            var rawEntry=t.entryDate||t.entry_date||t.date||'';
+            var dateOnly=rawEntry?rawEntry.substring(0,10):'';
             return {portfolio:'__DS__'+dsId,_dsName:dsNameMap[dsId]||'📊 Data',
               pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
               mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
-              sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+              sessions:t.session||t.sessions||'',
+              entry_date:dateOnly, close_date:(t.closeDate||t.close_date||'').substring(0,10)};
           });
         }
       }
@@ -9482,7 +9485,15 @@ async function renderDashboard(){
       }catch(e3){ console.warn('Dashboard fetch error',e3); }
     } else {
       Object.keys(S.trades||{}).forEach(function(dk){
-        (S.trades[dk]||[]).forEach(function(t){ journalTrades.push(Object.assign({},t,{portfolio:dk})); });
+        (S.trades[dk]||[]).forEach(function(t){
+          var rawEntry=t.entryDate||t.entry_date||dk||'';
+          var dateOnly=rawEntry?rawEntry.substring(0,10):'';
+          journalTrades.push(Object.assign({},t,{
+            portfolio:t.portfolio||S.currentPortfolio,
+            entry_date:dateOnly,
+            close_date:(t.closeDate||t.close_date||'').substring(0,10)
+          }));
+        });
       });
       Object.keys(S.portfolios||{}).forEach(function(pid){
         ports.push({id:pid,name:(S.portfolios[pid]&&S.portfolios[pid].name)||pid});
@@ -9722,15 +9733,18 @@ function _groupBySession(trades){
     sessions.forEach(function(s){ grid[d][s]={pnl:0,count:0}; });
   });
   trades.forEach(function(t){
-    // ใช้ date part เท่านั้น + T12:00 เพื่อป้องกัน UTC offset ทำให้วันผิด
     var rawDate=t.entry_date||t.close_date||'';
     if(!rawDate) return;
-    var dateOnly=rawDate.substring(0,10); // "YYYY-MM-DD"
+    var dateOnly=rawDate.substring(0,10);
     if(!dateOnly||dateOnly.length<10) return;
     var dt=new Date(dateOnly+'T12:00');
     if(isNaN(dt)) return;
     var day=days[dt.getDay()];
-    var sess=(t.sessions||'');
+    // Debug: log trades that fall on Sat/Sun
+    if(day==='Sat'||day==='Sun'){
+      console.warn('[Heatmap] '+day+' trade — entry_date raw:',rawDate,' dateOnly:',dateOnly,' pnl:',t.pnl,' sessions:',t.sessions,' portfolio:',t.portfolio);
+    }
+    var sess=(t.sessions||t.session||'');
     sessions.forEach(function(s){
       if(sess.toLowerCase().indexOf(s.toLowerCase())>=0){
         grid[day][s].pnl+=parseFloat(t.pnl)||0;
