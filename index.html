@@ -11419,22 +11419,36 @@ function _dtLazyLoadPortTrades(pid){
   _dtPortLoadPending[pid] = true;
   var uid = _authSession && _authSession._sbUserId;
   if(!uid){ _dtPortLoadPending[pid] = false; return; }
-  _supabase.from('trades').select('*')
-    .eq('user_id', uid).eq('portfolio', pid).eq('is_deleted', false)
-    .then(function(res){
-      _dtPortLoadPending[pid] = false;
-      if(res.error || !res.data || !res.data.length) return;
+  // Fetch trades + journal together
+  Promise.all([
+    _supabase.from('trades').select('*')
+      .eq('user_id', uid).eq('portfolio', pid).eq('is_deleted', false),
+    _supabase.from('journal').select('*')
+      .eq('user_id', uid).eq('portfolio', pid)
+  ]).then(function(results){
+    _dtPortLoadPending[pid] = false;
+    var trRes = results[0], jRes = results[1];
+    // Save trades
+    if(!trRes.error && trRes.data && trRes.data.length){
       var byDate = {};
-      res.data.forEach(function(r){
+      trRes.data.forEach(function(r){
         var t = _tradeFromRow(r);
         if(!byDate[t.date]) byDate[t.date] = [];
         byDate[t.date].push(t);
       });
       try{ lsSet(key, JSON.stringify(byDate)); }catch(e){}
-      // Re-render if Data Mode is open
-      if(_dtPanelOpen) dtRender();
-    })
-    .catch(function(){ _dtPortLoadPending[pid] = false; });
+    }
+    // Merge journal into S.journal (keyed as "portfolio_date")
+    if(!jRes.error && jRes.data && jRes.data.length){
+      if(!S.journal) S.journal = {};
+      jRes.data.forEach(function(j){
+        var memKey = (j.portfolio||pid) + '_' + (j.date||'');
+        S.journal[memKey] = { noteHTML: j.note_html||'', notePlain: j.note_plain||'' };
+      });
+    }
+    // Re-render if Data Mode is open
+    if(_dtPanelOpen) dtRender();
+  }).catch(function(){ _dtPortLoadPending[pid] = false; });
 }
 
 function dtFiltered(){
@@ -12085,6 +12099,15 @@ async function openPortSelectorModal(){
       // Multiple selected - update dropdown to show first one
       DS.current = _dtSelectedDatasets[0];
       dsRenderSelector();
+    }
+    // Pre-fetch trades+journal for all selected portfolios (clear cache to force re-fetch)
+    if(_dtViewMode==='port_only'||_dtViewMode==='combined'){
+      _dtSelectedPorts.forEach(function(pid){
+        // Clear cache so _dtLazyLoadPortTrades will actually fetch
+        try{ lsRem('port_'+pid+'_t'); }catch(e){}
+        _dtPortLoadPending[pid] = false;
+        _dtLazyLoadPortTrades(pid);
+      });
     }
     // Force reload from Supabase when dataset selection changes
     DT.trades = [];
