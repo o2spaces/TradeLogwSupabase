@@ -9439,10 +9439,13 @@ async function renderDashboard(){
         dtTrades = rawDT.map(function(t){
           var dsId = t.dataset_id || '__DT_default__';
           var dsName = dsNameMap[dsId] || '📊 Data';
+          var rawEntry=t.entry_date||t.entryDate||t.date||'';
+          var dateOnly=rawEntry?rawEntry.substring(0,10):'';
           return {portfolio:'__DS__'+dsId, _dsName:dsName,
             pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
             mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
-            sessions:t.session||t.sessions||'',entry_date:t.entryDate||t.date||'',close_date:t.closeDate||''};
+            sessions:t.session||t.sessions||'',
+            entry_date:dateOnly, close_date:(t.close_date||t.closeDate||'').substring(0,10)};
         });
       } else {
         // Fallback: use DT cache
@@ -9469,7 +9472,12 @@ async function renderDashboard(){
           _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
           _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false),
         ]);
-        journalTrades=res[0].data||[];
+        journalTrades=(res[0].data||[]).map(function(t){
+          // Normalize entry_date → date-only "YYYY-MM-DD" เพื่อป้องกัน UTC offset ทำให้วันผิด
+          var rawEntry=t.entry_date||t.date||'';
+          var dateOnly=rawEntry?rawEntry.substring(0,10):'';
+          return Object.assign({},t,{entry_date:dateOnly, date:t.date||dateOnly});
+        });
         ports=res[1].data||[];
       }catch(e3){ console.warn('Dashboard fetch error',e3); }
     } else {
