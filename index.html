@@ -11420,19 +11420,16 @@ function dtSyncImportToSheet(trades){
 // ── Filter helper ──
 // GAP 6 FIX: dtFiltered previously read non-current portfolio trades from localStorage only.
 // If a portfolio was never opened on this device, its localStorage key is absent → data missing.
-// Now: when combined/port_only mode, check localStorage first; if missing AND supabase connected,
-// trigger async load for that portfolio (result updates on next render cycle).
-var _dtPortLoadPending = {}; // tracks portfolios currently being fetched
+var _dtPortLoadPending = {};
+var _dtPortCache = {}; // in-memory: pid → {date:[trades]}
 
 function _dtLazyLoadPortTrades(pid){
   if(!_supabase) return;
-  if(_dtPortLoadPending[pid]) return; // already fetching
-  var key = 'port_'+pid+'_t';
-  if(lsGet(key)) return; // already cached in localStorage
+  if(_dtPortLoadPending[pid]) return;
+  if(_dtPortCache[pid]) return; // already in memory
   _dtPortLoadPending[pid] = true;
   var uid = _authSession && _authSession._sbUserId;
   if(!uid){ _dtPortLoadPending[pid] = false; return; }
-  // Fetch trades + journal together
   Promise.all([
     _supabase.from('trades').select('*')
       .eq('user_id', uid).eq('portfolio', pid).eq('is_deleted', false),
@@ -11441,25 +11438,23 @@ function _dtLazyLoadPortTrades(pid){
   ]).then(function(results){
     _dtPortLoadPending[pid] = false;
     var trRes = results[0], jRes = results[1];
-    // Save trades
-    if(!trRes.error && trRes.data && trRes.data.length){
-      var byDate = {};
+    var byDate = {};
+    if(!trRes.error && trRes.data){
       trRes.data.forEach(function(r){
         var t = _tradeFromRow(r);
         if(!byDate[t.date]) byDate[t.date] = [];
         byDate[t.date].push(t);
       });
-      try{ lsSet(key, JSON.stringify(byDate)); }catch(e){}
     }
-    // Merge journal into S.journal (keyed as "portfolio_date")
+    _dtPortCache[pid] = byDate;
+    try{ lsSet('port_'+pid+'_t', JSON.stringify(byDate)); }catch(e){}
     if(!jRes.error && jRes.data && jRes.data.length){
       if(!S.journal) S.journal = {};
       jRes.data.forEach(function(j){
-        var memKey = (j.portfolio||pid) + '_' + (j.date||'');
-        S.journal[memKey] = { noteHTML: j.note_html||'', notePlain: j.note_plain||'' };
+        var memKey = (j.portfolio||pid)+'_'+(j.date||'');
+        S.journal[memKey] = { noteHTML:j.note_html||'', notePlain:j.note_plain||'' };
       });
     }
-    // Re-render if Data Mode is open
     if(_dtPanelOpen) dtRender();
   }).catch(function(){ _dtPortLoadPending[pid] = false; });
 }
@@ -11523,25 +11518,32 @@ function dtFiltered(){
       if(!t._deleted && !t._softDeleted) src.push(Object.assign({},t,{_src:'data'}));
     });
   }
-  // Portfolio trades — FIX: อ่านจาก localStorage ของทุก portfolio ที่ tick ไว้
+  // Portfolio trades — อ่าน currentPortfolio จาก S.trades โดยตรง, port อื่นจาก _dtPortCache (in-memory)
   if(_dtViewMode==='port_only'||_dtViewMode==='combined'){
-    // กำหนดว่าจะดึง portfolio ไหนบ้าง — ถ้า _dtSelectedPorts ว่าง แสดงว่าผู้ใช้ยกเลิกทั้งหมด → ไม่โหลด
     var portsToLoad=_dtSelectedPorts.length>0?_dtSelectedPorts:[];
     portsToLoad.forEach(function(pid){
       var portTrades={};
-      var _cached = lsGet('port_'+pid+'_t');
-      if(_cached){
-        try{ portTrades=JSON.parse(_cached); }catch(e){}
+      if(pid===S.currentPortfolio){
+        // currentPortfolio → อ่านจาก S.trades โดยตรง (source of truth)
+        portTrades = S.trades || {};
       } else {
-        // GAP 6 FIX: localStorage missing → trigger background fetch from Supabase
-        _dtLazyLoadPortTrades(pid);
+        // port อื่น → ลอง in-memory cache ก่อน ถ้าไม่มีค่อย trigger fetch
+        if(window._dtPortCache && _dtPortCache[pid]){
+          portTrades = _dtPortCache[pid];
+        } else {
+          // ลอง localStorage (offline mode fallback)
+          var _cached = lsGet('port_'+pid+'_t');
+          if(_cached){
+            try{ portTrades=JSON.parse(_cached); }catch(e){}
+          }
+          // trigger async fetch ไม่ว่าจะมี localStorage หรือไม่ก็ตาม (เผื่อ stale)
+          _dtLazyLoadPortTrades(pid);
+        }
       }
       Object.keys(portTrades).forEach(function(dk){
         (portTrades[dk]||[]).forEach(function(t){
-          // Map entryDate (portfolio field) → entryTime (data table field) for display
           var _et=t.entryTime||'';
           if(!_et&&t.entryDate){
-            // entryDate may be "HH:mm" or "yyyy-MM-dd HH:mm"
             var _em=String(t.entryDate).match(/[T ]\s*(\d{1,2}:\d{2})/)||String(t.entryDate).match(/^(\d{1,2}:\d{2})/);
             if(_em) _et=_em[1];
           }
