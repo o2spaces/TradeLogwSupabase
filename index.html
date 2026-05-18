@@ -7621,12 +7621,15 @@ function parseFundedApexRithmic(text){
   // Parse Thai Buddhist Era date: "15/5/2569 14:13:15" → "2026-05-15T14:13:15"
   function parseRTDate(s){
     s=s.trim();
-    var m=s.match(/(\d+)\/(\d+)\/(\d+)\s+(\d+:\d+(?::\d+)?)/);
+    var m=s.match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)(?::(\d+))?/);
     if(!m)return '';
-    var day=parseInt(m[1]),mon=parseInt(m[2]),be=parseInt(m[3]),time=m[4];
-    var ce=be>2400?be-543:be; // guard: ถ้าน้อยกว่า 2400 แสดงว่า CE แล้ว
-    if(time.split(':').length===2)time+=':00';
-    return ce+'-'+('0'+mon).slice(-2)+'-'+('0'+day).slice(-2)+'T'+time;
+    var day=parseInt(m[1]),mon=parseInt(m[2]),be=parseInt(m[3]);
+    var hh=parseInt(m[4]),mm=m[5],ss=m[6]||'00';
+    var ce=be>2400?be-543:be;
+    // pad ชั่วโมงให้เป็น 2 หลักเสมอ เพื่อให้ sort แบบ string ถูกต้อง
+    // (ไม่งั้น "T11:xx" < "T7:xx" ทำให้ FIFO ผิด)
+    var timeStr=('0'+hh).slice(-2)+':'+mm+':'+ss;
+    return ce+'-'+('0'+mon).slice(-2)+'-'+('0'+day).slice(-2)+'T'+timeStr;
   }
 
   var headers=lines[0].split(',').map(function(h){return h.trim();});
