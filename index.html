@@ -9527,14 +9527,18 @@ async function renderDashboard(){
     if(_supabase && uid){
       try{
         var res=await Promise.all([
-          _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid).eq('is_deleted',false),
+          _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,date').eq('user_id',uid).eq('is_deleted',false),
           _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false),
         ]);
         journalTrades=(res[0].data||[]).map(function(t){
-          // Normalize entry_date → date-only "YYYY-MM-DD" เพื่อป้องกัน UTC offset ทำให้วันผิด
-          var rawEntry=t.entry_date||t.date||'';
-          var dateOnly=rawEntry?rawEntry.substring(0,10):'';
-          return Object.assign({},t,{entry_date:dateOnly, date:t.date||dateOnly});
+          // ใช้ entry_date > date (YYYY-MM-DD key) > close_date เป็น fallback
+          var rawEntry = t.entry_date || t.date || t.close_date || '';
+          var dateOnly = rawEntry ? rawEntry.substring(0,10) : '';
+          return Object.assign({},t,{
+            entry_date: dateOnly,
+            date: t.date || dateOnly,
+            sessions: t.sessions || t.session || ''
+          });
         });
         ports=res[1].data||[];
       }catch(e3){ console.warn('Dashboard fetch error',e3); }
@@ -9788,21 +9792,21 @@ function _groupBySession(trades){
     sessions.forEach(function(s){ grid[d][s]={pnl:0,count:0}; });
   });
   trades.forEach(function(t){
-    var rawDate=t.entry_date||t.close_date||'';
+    // ลำดับ priority: entry_date > date > close_date
+    var rawDate = t.entry_date || t.date || t.close_date || '';
     if(!rawDate) return;
-    var dateOnly=rawDate.substring(0,10);
-    if(!dateOnly||dateOnly.length<10) return;
-    var dt=new Date(dateOnly+'T12:00');
-    if(isNaN(dt)) return;
-    var day=days[dt.getDay()];
-    // Debug: log trades that fall on Sat/Sun
-    if(day==='Sat'||day==='Sun'){
-      // (debug removed)
-    }
-    var sess=(t.sessions||t.session||'');
+    // ตัด timestamp ออก ให้เหลือแค่ YYYY-MM-DD
+    var dateOnly = rawDate.substring(0,10);
+    if(!dateOnly || dateOnly.length < 10) return;
+    // เพิ่ม T12:00 เพื่อป้องกัน UTC offset ทำให้วันเลื่อน
+    var dt = new Date(dateOnly + 'T12:00:00');
+    if(isNaN(dt.getTime())) return;
+    var day = days[dt.getDay()];
+    // sessions field: "Tokyo,London" หรือ "Tokyo" หรือ "Tokyo / London"
+    var sess = String(t.sessions || t.session || '');
     sessions.forEach(function(s){
-      if(sess.toLowerCase().indexOf(s.toLowerCase())>=0){
-        grid[day][s].pnl+=parseFloat(t.pnl)||0;
+      if(sess.toLowerCase().indexOf(s.toLowerCase()) >= 0){
+        grid[day][s].pnl += parseFloat(t.pnl) || 0;
         grid[day][s].count++;
       }
     });
