@@ -9531,11 +9531,12 @@ async function renderDashboard(){
           _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false),
         ]);
         journalTrades=(res[0].data||[]).map(function(t){
-          // ใช้ entry_date > date (YYYY-MM-DD key) > close_date เป็น fallback
+          // เก็บ entry_date เต็ม (รวม time) ไว้เพื่อ auto-detect session
           var rawEntry = t.entry_date || t.date || t.close_date || '';
           var dateOnly = rawEntry ? rawEntry.substring(0,10) : '';
           return Object.assign({},t,{
-            entry_date: dateOnly,
+            entry_date: rawEntry,      // เก็บเต็มๆ ไว้ให้ _groupBySession ดึง time ได้
+            _dateOnly: dateOnly,       // date-only สำหรับ calendar
             date: t.date || dateOnly,
             sessions: t.sessions || t.session || ''
           });
@@ -9791,25 +9792,70 @@ function _groupBySession(trades){
     grid[d]={};
     sessions.forEach(function(s){ grid[d][s]={pnl:0,count:0}; });
   });
+
+  // Helper: auto-detect session from HH:MM string (Bangkok time UTC+7)
+  // ใช้ default session windows ถ้าไม่มี _customSessions
+  function _detectSessionFromTime(timeStr){
+    if(!timeStr) return '';
+    var m = String(timeStr).match(/(\d{1,2}):(\d{2})/);
+    if(!m) return '';
+    var h = parseInt(m[1]);
+    // Default session windows (local Bangkok time UTC+7)
+    if(h>=22 || h<1)  return 'Sydney';
+    if(h>=1  && h<8)  return 'Tokyo';
+    if(h>=7  && h<12) return 'London';
+    if(h>=12 && h<20) return 'New York';
+    return '';
+  }
+
+  // Helper: extract primary session (first one) from sessions string
+  function _primarySession(sessStr){
+    if(!sessStr) return '';
+    // Split by common separators: comma, slash, pipe, semicolon
+    var parts = String(sessStr).split(/[,\/|;]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+    return parts[0] || '';
+  }
+
   trades.forEach(function(t){
-    // ลำดับ priority: entry_date > date > close_date
-    var rawDate = t.entry_date || t.date || t.close_date || '';
+    // ── Date ──
+    // ใช้ _dateOnly ถ้ามี (pre-computed), fallback ตัด substring จาก field อื่น
+    var rawDate = t._dateOnly || t.date || t.close_date || '';
+    if(!rawDate) {
+      var full = t.entry_date || '';
+      rawDate = full ? full.substring(0,10) : '';
+    }
     if(!rawDate) return;
-    // ตัด timestamp ออก ให้เหลือแค่ YYYY-MM-DD
     var dateOnly = rawDate.substring(0,10);
     if(!dateOnly || dateOnly.length < 10) return;
-    // เพิ่ม T12:00 เพื่อป้องกัน UTC offset ทำให้วันเลื่อน
     var dt = new Date(dateOnly + 'T12:00:00');
     if(isNaN(dt.getTime())) return;
     var day = days[dt.getDay()];
-    // sessions field: "Tokyo,London" หรือ "Tokyo" หรือ "Tokyo / London"
-    var sess = String(t.sessions || t.session || '');
-    sessions.forEach(function(s){
-      if(sess.toLowerCase().indexOf(s.toLowerCase()) >= 0){
-        grid[day][s].pnl += parseFloat(t.pnl) || 0;
-        grid[day][s].count++;
-      }
+
+    // ── Session ──
+    var sessRaw = String(t.sessions || t.session || '').trim();
+
+    // ถ้าไม่มี session field → auto-detect จาก entryTime / entryDate
+    if(!sessRaw){
+      // ลองดึงเวลาจาก entryDate หรือ entry_date (อาจเป็น "2026-05-14T08:01")
+      var entryFull = String(t.entryDate || t.entry_date || t.entryTime || '');
+      var tMatch = entryFull.match(/[T ](\d{1,2}:\d{2})/);
+      var timeStr = tMatch ? tMatch[1] : (t.entryTime || t.entry_time || '');
+      sessRaw = _detectSessionFromTime(timeStr);
+    }
+
+    // ใช้แค่ PRIMARY SESSION (session แรก) เพื่อป้องกัน PnL นับซ้ำ
+    var primary = _primarySession(sessRaw);
+    if(!primary) return;
+
+    // หา match กับ sessions list
+    var matched = sessions.find(function(s){
+      return primary.toLowerCase().indexOf(s.toLowerCase()) >= 0
+          || s.toLowerCase().indexOf(primary.toLowerCase()) >= 0;
     });
+    if(matched){
+      grid[day][matched].pnl += parseFloat(t.pnl) || 0;
+      grid[day][matched].count++;
+    }
   });
   return grid;
 }
