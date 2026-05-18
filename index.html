@@ -10493,20 +10493,51 @@ function dtAddSessionTag(){
 }
 function dtAutoSession(){
   var ed=document.getElementById('dtEntryDate');if(!ed||!ed.value)return;
-  var h=new Date(ed.value).getUTCHours();
-  var auto='OUT';
-  if(h>=22||h<1) auto='Sydney';
-  else if(h>=1&&h<8) auto='Tokyo';
-  else if(h>=7&&h<12) auto='London';
-  else if(h>=12&&h<20) auto='New York';
-  DT.sessions=[auto];
+  // ใช้ local time (ตรงกับ datetime-local input)
+  var h=new Date(ed.value).getHours();
+  var detected=[];
+
+  if(_customSessions&&_customSessions.length){
+    // ใช้ _customSessions เหมือน autoDetectSession ของ journal form
+    _customSessions.forEach(function(s){
+      if(!s.time)return;
+      var m=s.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
+      if(!m)return;
+      var st=parseInt(m[1]),en=parseInt(m[3]);
+      var active=st<en?(h>=st&&h<en):(h>=st||h<en);
+      if(active) detected.push(s.label||s.id||'');
+    });
+  } else {
+    // Fallback: default sessions (Bangkok time UTC+7)
+    if(h>=22||h<1)      detected=['Sydney'];
+    else if(h>=1&&h<8)  detected=['Tokyo'];
+    else if(h>=7&&h<12) detected=['London'];
+    else if(h>=12&&h<20)detected=['New York'];
+  }
+
+  DT.sessions=detected;
+
+  // อัปเดต tag row (dtSessionTagRow) แทน dropdown
+  var row=document.getElementById('dtSessionTagRow');
+  if(row){
+    row.querySelectorAll('.tag').forEach(function(el){el.classList.remove('active');});
+    detected.forEach(function(label){
+      var tag=row.querySelector('.tag[data-label="'+label+'"]')||
+              Array.from(row.querySelectorAll('.tag')).find(function(t){return t.textContent.trim()===label;});
+      if(tag) tag.classList.add('active');
+    });
+  }
+  // ยัง support dropdown เดิมถ้ามี
   var sel=document.getElementById('dtSession');
-  if(sel){
-    // Try exact match first, else map to short codes
-    var shortMap={'Sydney':'Sydney','Tokyo':'Tokyo','London':'London','New York':'New York'};
+  if(sel&&detected.length){
     for(var i=0;i<sel.options.length;i++){
-      if(sel.options[i].value===auto||sel.options[i].value===shortMap[auto]){sel.selectedIndex=i;break;}
+      if(sel.options[i].value===detected[0]){sel.selectedIndex=i;break;}
     }
+  }
+  // แสดง hint
+  if(detected.length){
+    var hint=document.getElementById('dtSessionAIHint')||document.getElementById('oSessionAIHint');
+    if(hint){hint.textContent='🤖 ตรวจจับ Session: '+detected.join(', ');hint.style.display='block';}
   }
 }
 
@@ -10779,6 +10810,38 @@ async function dtDoScan(){
         filled.push({k:'Close Time',v:closeTimeVal});
       }
       dtCalcAll();
+
+      // ── Fallback retry: ถ้าได้ entry_datetime แต่ไม่ได้ close_datetime → scan ซ้ำเจาะจง ──
+      var needCloseRetry2 = entryDTval && entryDTval!=='' && (!closeDTval||closeDTval==='') && (!closeTimeVal||closeTimeVal==='');
+      if(needCloseRetry2){
+        if(res) res.innerHTML='<div style="margin-bottom:7px;font-size:11px;">✅ ได้ข้อมูลหลักแล้ว... <span style="color:var(--text-muted);">🔍 กำลังหา Close Time...</span></div>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:4px;line-height:1.8;">'+filled.map(function(f){return '<span style="display:inline-flex;align-items:center;gap:3px;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 8px;font-size:10px;white-space:nowrap;"><span style="color:var(--text-muted);">'+f.k+'</span><span style="color:var(--accent);font-family:var(--font-mono);font-weight:600;">'+f.v+'</span></span>';}).join('')+'</div>';
+        var closePrompt2=[
+          'Look ONLY at the bottom X-AXIS (time axis) of this trading chart.',
+          'Find ALL blue highlighted timestamp boxes/labels on the time axis.',
+          '  - LEFT blue marker = entry time (already found: '+entryDTval+')',
+          '  - RIGHT blue marker = close/exit time (this is what I need)',
+          'The RIGHT marker is to the right of the entry marker.',
+          'Thai months: ม.ค.=01 ก.พ.=02 มี.ค.=03 เม.ย.=04 พ.ค.=05 มิ.ย.=06 ก.ค.=07 ส.ค.=08 ก.ย.=09 ต.ค.=10 พ.ย.=11 ธ.ค.=12',
+          'Year: "26"=2026 "25"=2025',
+          'Return ONLY this JSON (no markdown):',
+          '{"close_datetime":"YYYY-MM-DDTHH:MM"}',
+          'If no second blue marker, return: {"close_datetime":""}'
+        ].join('\n');
+        try{
+          var text2=await callVision(closePrompt2, DT._upB64);
+          var m2=text2.match(/\{[\s\S]*\}/);
+          if(m2){
+            var d2=JSON.parse(m2[0]);
+            if(d2.close_datetime&&d2.close_datetime.length>=16){
+              var cdt2=d2.close_datetime.substring(0,16);
+              document.getElementById('dtCloseDate').value=cdt2;
+              if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+              filled.push({k:'Close Time',v:cdt2.replace('T',' ')});
+            }
+          }
+        }catch(e2){console.warn('dtDoScan close retry failed:',e2);}
+      }
       // Build pill display
       var pills=filled.map(function(f){
         return '<span style="display:inline-flex;align-items:center;gap:3px;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 8px;font-size:10px;white-space:nowrap;">'
