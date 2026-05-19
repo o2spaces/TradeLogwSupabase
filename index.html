@@ -3714,7 +3714,7 @@ function renderCal(){
   drawEQ();
 }
 function mkCell(dt,other){
-  var k=dk(dt),tr=S.trades[k]||[],se=S.sessions[k]||{},pnl=tr.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0),today=new Date();
+  var k=dk(dt),tr=_getTradesByDate(k),se=S.sessions[k]||{},pnl=tr.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0),today=new Date();
   var c=document.createElement('div');c.className='cal-day';
   if(other) c.classList.add('other-month');
   if(dt.toDateString()===today.toDateString()) c.classList.add('today');
@@ -3813,7 +3813,7 @@ function renderWeekly(){
   var wbm={};for(var m=0;m<12;m++) wbm[m]=[];
   for(var mo=0;mo<12;mo++){
     var dim=new Date(yr,mo+1,0).getDate(),wks={};
-    for(var d2=1;d2<=dim;d2++){var dt=new Date(yr,mo,d2),w=wkNum(dt),kk=dk(dt),tr2=S.trades[kk]||[];if(!wks[w])wks[w]={w,pnl:0};wks[w].pnl+=tr2.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0);}
+    for(var d2=1;d2<=dim;d2++){var dt=new Date(yr,mo,d2),w=wkNum(dt),kk=dk(dt),tr2=_getTradesByDate(kk);if(!wks[w])wks[w]={w,pnl:0};wks[w].pnl+=tr2.reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0);}
     wbm[mo]=Object.values(wks).sort(function(a,b){return a.w-b.w;});
   }
   var maxR=Math.max.apply(null,Object.values(wbm).map(function(a){return a.length;}));
@@ -3839,7 +3839,32 @@ function renderWeekly(){
 }
 function chYear(d){S.viewYear+=d;renderWeekly();}
 
-function allTrades(){var a=[];Object.values(S.trades).forEach(function(arr){a=a.concat(arr);});return a;}
+function _getTradesByDate(dateKey){
+  // รวม trades จาก currentPortfolio (S.trades) + port อื่นๆ ใน _dtPortCache
+  var base = (S.trades[dateKey] || []).slice();
+  if(window._dtPortCache){
+    Object.keys(_dtPortCache).forEach(function(pid){
+      if(pid === S.currentPortfolio) return; // ไม่นับซ้ำ
+      var portTrades = (_dtPortCache[pid] || {})[dateKey] || [];
+      base = base.concat(portTrades);
+    });
+  }
+  return base;
+}
+function allTrades(){
+  // รวม trades ทุกวันจาก currentPortfolio + _dtPortCache ของ port อื่น
+  var a = [];
+  var allDates = new Set(Object.keys(S.trades));
+  if(window._dtPortCache){
+    Object.keys(_dtPortCache).forEach(function(pid){
+      if(pid !== S.currentPortfolio){
+        Object.keys(_dtPortCache[pid] || {}).forEach(function(d){ allDates.add(d); });
+      }
+    });
+  }
+  allDates.forEach(function(k){ a = a.concat(_getTradesByDate(k)); });
+  return a;
+}
 function calcSt(trades){
   // BUG-C FIX: sort by date+entryDate before DD calc
   trades = trades.slice().sort(function(a,b){
