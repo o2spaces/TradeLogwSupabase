@@ -2932,6 +2932,9 @@ function switchPortfolio(id){
   }
   document.querySelectorAll('.port-tab').forEach(function(t){t.classList.toggle('active',t.dataset.portId===id);});
   updateStats();renderCal();updateRecent();renderTodayOrders();renderPortfolioBar();
+  // Weekly view: re-render ทันทีถ้ากำลังแสดงอยู่ หรือ pre-render ไว้เลย
+  if(typeof renderWeekly==='function') renderWeekly();
+  if(typeof drawEQW==='function') drawEQW();
   lsSet('tj_curport',id);
   showToast('📁 เปลี่ยนพอร์ต: '+S.portfolios[id].name,'success');
 }
