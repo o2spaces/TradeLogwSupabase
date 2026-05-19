@@ -2922,21 +2922,27 @@ function switchPortfolio(id){
   if(!S.portfolios[id]) return;
   S.currentPortfolio=id;
   lsSet('tj_curport', id);
-  if(_supabase){ sendSheet('saveSettings',{key:'current_portfolio', value:id});
-    // มี Sheet → clear แล้ว sync ใหม่จาก Sheet เสมอ (ไม่อ่าน localStorage ที่อาจว่าง)
+  document.querySelectorAll('.port-tab').forEach(function(t){t.classList.toggle('active',t.dataset.portId===id);});
+  renderPortfolioBar();
+  showToast('📁 เปลี่ยนพอร์ต: '+S.portfolios[id].name,'success');
+
+  function _afterSwitch(){
+    updateStats();renderCal();updateRecent();renderTodayOrders();
+    if(typeof renderWeekly==='function') renderWeekly();
+    if(typeof drawEQW==='function') setTimeout(drawEQW,100);
+    if(typeof renderDashboard==='function' && document.getElementById('dashboardView')
+       && document.getElementById('dashboardView').style.display!=='none') renderDashboard();
+  }
+
+  if(_supabase){
+    sendSheet('saveSettings',{key:'current_portfolio', value:id});
     S.trades={}; S.sessions={};
-    syncFromSheet(null);
+    syncFromSheet(_afterSwitch);  // render หลัง sync เสร็จ
   } else {
     S.sessions=getPortSessions();
     S.trades=getPortTrades();
+    _afterSwitch();
   }
-  document.querySelectorAll('.port-tab').forEach(function(t){t.classList.toggle('active',t.dataset.portId===id);});
-  updateStats();renderCal();updateRecent();renderTodayOrders();renderPortfolioBar();
-  // Weekly view: re-render ทันทีถ้ากำลังแสดงอยู่ หรือ pre-render ไว้เลย
-  if(typeof renderWeekly==='function') renderWeekly();
-  if(typeof drawEQW==='function') drawEQW();
-  lsSet('tj_curport',id);
-  showToast('📁 เปลี่ยนพอร์ต: '+S.portfolios[id].name,'success');
 }
 function renderPortfolioBar(){
   var bar=document.getElementById('portfolioBar');
