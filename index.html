@@ -4505,6 +4505,26 @@ function calcDTRR(){
   rrEl.textContent='—'; rrEl.style.color='var(--accent)';
   return 0;
 }
+function calcTimeInPos(){
+  // Journal form (oEntryDate / oCloseDate)
+  var ed=document.getElementById('oEntryDate');
+  var cd=document.getElementById('oCloseDate');
+  var tp=document.getElementById('oTimePos');
+  if(!ed||!cd||!tp)return;
+  var ev=ed.value,cv=cd.value;
+  if(!ev||!cv){tp.value='';return;}
+  var ms=new Date(cv)-new Date(ev);
+  if(isNaN(ms)||ms<0){tp.value='';return;}
+  var totalMins=Math.floor(ms/60000);
+  var d=Math.floor(totalMins/1440);
+  var h=Math.floor((totalMins%1440)/60);
+  var m=totalMins%60;
+  var r='';
+  if(d>0)r+=d+'d ';
+  if(h>0||d>0)r+=h+'h ';
+  r+=m+'m';
+  tp.value=r.trim();
+}
 function calcAll(){
   var asset=document.getElementById('oAsset').value;
   var lots=parseFloat(document.getElementById('oLots').value)||0;
