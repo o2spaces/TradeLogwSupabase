@@ -7824,10 +7824,62 @@ function parseFundedApexRithmic(text){
     }
   });
 
+  // ── Step 3: Merge same-entry orders ──
+  // Rule: sym + side + entryTime(HH:MM) + entryPrice เดียวกัน = order เดียว
+  // Exit price = weighted avg; P/L, fee = sum; closeDate = latest
+  // BONUS: ถ้า entryTime เดียวกัน + side เดียวกัน แต่ entryPrice ต่างกันไม่เกิน 2 ticks (0.5pt = 1.25)
+  //        ให้รวมเป็น order เดียวด้วย (กรณี slippage เล็กน้อย)
+  var TICK_TOLERANCE = 1.25; // MNQ 5 ticks = 1.25 pts
+  var orderList = [];
+
+  _fundedImportData.forEach(function(t){
+    // Normalize entryTime key เป็น HH:MM
+    var entryHHMM = t.entryDate ? t.entryDate.substring(11,16) : '';
+
+    // หา existing order ที่ match: sym+side+entryHHMM และ entryPrice ใกล้กัน (≤ tolerance)
+    var matched = null;
+    for(var oi=0; oi<orderList.length; oi++){
+      var od = orderList[oi];
+      var odHHMM = od.entryDate ? od.entryDate.substring(11,16) : '';
+      if(od.asset===t.asset && od.side===t.side && odHHMM===entryHHMM
+         && od._dateKey===t._dateKey
+         && Math.abs(parseFloat(od.entry)-parseFloat(t.entry)) <= TICK_TOLERANCE){
+        matched = od; break;
+      }
+    }
+
+    if(matched){
+      var totalQty = parseFloat(matched.lots) + parseFloat(t.lots);
+      // Weighted avg exit price
+      var wExit = (parseFloat(matched.close)*parseFloat(matched.lots)
+                  + parseFloat(t.close)*parseFloat(t.lots)) / totalQty;
+      // Weighted avg entry price
+      var wEntry = (parseFloat(matched.entry)*parseFloat(matched.lots)
+                   + parseFloat(t.entry)*parseFloat(t.lots)) / totalQty;
+      matched.lots = String(totalQty);
+      matched.entry = wEntry.toFixed(2);
+      matched.close = wExit.toFixed(2);
+      matched.pnl = (parseFloat(matched.pnl)+parseFloat(t.pnl)).toFixed(2);
+      matched.commission = (parseFloat(matched.commission)+parseFloat(t.commission)).toFixed(2);
+      matched.fees = (parseFloat(matched.fees||0)+parseFloat(t.fees||0)).toFixed(2);
+      // ใช้ closeDate ล่าสุด
+      if(t.closeDate > matched.closeDate) matched.closeDate = t.closeDate;
+      // recalc result, tp, sl
+      var mn = parseFloat(matched.pnl);
+      matched.result = mn>0?'Win':mn<0?'Loss':'BE';
+      matched.tp = mn>=0 ? matched.close : '';
+      matched.sl = mn<0  ? matched.close : '';
+      // recalc time in pos
+      matched.timeInPos = _calcTimeInPos(matched.entryDate, matched.closeDate);
+    } else {
+      orderList.push(Object.assign({},t));
+    }
+  });
+
+  _fundedImportData = orderList;
   _showFundedPreview(0);
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────
+// ← end parseFundedApexRithmic
 function _formatFundedDur(dur){
   if(!dur)return '';
   var m=dur.match(/(\d+):(\d+):(\d+)/);
