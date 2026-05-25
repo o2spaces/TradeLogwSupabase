@@ -1405,7 +1405,11 @@ var _supabase = null;
                 <option value="BE">— BE (Break Even)</option>
               </select>
             </div>
-            <div class="form-field"><label>Max RR</label><input class="form-input" id="oMaxRR" type="number" step="0.1" placeholder="e.g. 3.0"></div>
+            <div class="form-field"><label>Max RR</label><input class="form-input" id="oMaxRR" type="number" step="0.1" placeholder="e.g. 3.0" oninput="calcMaxRR()"></div>
+            <div class="form-field">
+              <label style="display:flex;align-items:center;gap:4px;">TP Max RR <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(ระยะ TP Max)</span></label>
+              <input class="form-input" id="oTPMaxRR" type="number" step="any" placeholder="e.g. 29500" oninput="calcMaxRR()" style="border-color:var(--accent);opacity:.85;">
+            </div>
           </div>
           <!-- RR auto-calc display -->
           <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:16px;font-size:11px;margin-bottom:4px;" id="oRRBar">
@@ -4318,6 +4322,7 @@ function openDay(dt){
   if(addBtn){addBtn.textContent='✓ Add Trade';addBtn.onclick=function(){addTrade();};}
   // reset new order form fields — then apply defaults
   ['oMaxRR','oFiboLevel','oSetupClass','oCandle','oCode','oMode','oTF','oTrend','oZone','oConfirm'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var _tpMaxRREl=document.getElementById('oTPMaxRR');if(_tpMaxRREl)_tpMaxRREl.value='';
   _applyEntryDefaults('journal');
   setTimeout(function(){ if(typeof _injectTagHelper==='function'){ _injectTagHelper('oNote'); _injectTagHelper('nComment'); } }, 200);
   setTimeout(function(){
@@ -4589,6 +4594,35 @@ function calcDTRR(){
   rrEl.textContent='—'; rrEl.style.color='var(--accent)';
   return 0;
 }
+// ─── TP Max RR: คำนวณ Max RR จาก TP Max price ────────────────────────────
+// Journal form
+function calcMaxRR(){
+  var en=parseFloat(document.getElementById('oEntry').value)||0;
+  var sl=parseFloat(document.getElementById('oSL').value)||0;
+  var tpMax=parseFloat(document.getElementById('oTPMaxRR').value)||0;
+  var maxRREl=document.getElementById('oMaxRR');
+  if(!maxRREl) return;
+  // ถ้ากรอก TP Max → คำนวณ Max RR = |TPMax - Entry| / |Entry - SL|
+  if(tpMax && en && sl && Math.abs(en-sl)>0){
+    var maxRR=Math.abs(tpMax-en)/Math.abs(en-sl);
+    maxRREl.value=maxRR.toFixed(2);
+  }
+  // ถ้าลบ TP Max → ไม่ clear Max RR (ให้ user แก้เองได้)
+  calcRR();
+}
+// Data Mode form
+function dtCalcMaxRR(){
+  var en=parseFloat(document.getElementById('dtEntry').value)||0;
+  var sl=parseFloat(document.getElementById('dtSL2').value)||0;
+  var tpMax=parseFloat(document.getElementById('dtTPMaxRR').value)||0;
+  var maxRREl=document.getElementById('dtMaxRR');
+  if(!maxRREl) return;
+  if(tpMax && en && sl && Math.abs(en-sl)>0){
+    var maxRR=Math.abs(tpMax-en)/Math.abs(en-sl);
+    maxRREl.value=maxRR.toFixed(2);
+  }
+  calcDTRR();
+}
 function calcTimeInPos(){
   // Journal form (oEntryDate / oCloseDate)
   var ed=document.getElementById('oEntryDate');
@@ -4675,6 +4709,9 @@ function calcAll(){
   } else { bar.style.display='none';var warn=document.getElementById('riskWarnBar');if(warn)warn.style.display='none';var ri=document.getElementById('oRisk');if(ri){ri.style.borderColor='';ri.style.color='';}var rd=document.getElementById('oRiskWarnDot');if(rd)rd.style.display='none'; }
   calcPnl();
   calcRR();
+  // Re-calc Max RR if TP Max is set
+  var _tpMaxV = document.getElementById('oTPMaxRR');
+  if(_tpMaxV && _tpMaxV.value) calcMaxRR();
 }
 function previewImgLink(v){
   var p=document.getElementById('oImgPreview'),a=document.getElementById('oImgAnchor');
@@ -10880,9 +10917,10 @@ function dtCalcAll(){
   if(cRR) cRR.textContent=rr?'1:'+rr.toFixed(2):'-';
   if(cLots) cLots.textContent=lots?lots.toFixed(2)+' lots':'-';
   calcDTRR();
+  // Re-calc Max RR if TP Max is set
+  var _dtTpMaxV = document.getElementById('dtTPMaxRR');
+  if(_dtTpMaxV && _dtTpMaxV.value) dtCalcMaxRR();
 }
-
-// ── Sliders ──
 var DT_EMO_LABELS={1:'😡 Angry',2:'😠 Frustrated',3:'😟 Anxious',4:'😕 Uneasy',5:'😐 Neutral',6:'🙂 Calm',7:'😊 Confident',8:'😄 Focused',9:'🤩 Excited',10:'🧠 In-the-Zone'};
 function dtUpdateEmo(v){DT.emo=+v;var el=document.getElementById('dtEmoLabel');if(el)el.textContent=v+' - '+(DT_EMO_LABELS[+v]||'');}
 function dtUpdateDisc(v){DT.disc=+v;var el=document.getElementById('dtDiscLabel');if(el)el.textContent=v;}
@@ -11108,7 +11146,7 @@ function dtOpenAdd(){
       if(sdb){sdb.style.background='var(--accent)';sdb.style.color='#fff';}
     },100);
   }
-  var ids=['dtEntry','dtTP','dtSL2','dtRisk','dtLots','dtPnl','dtMaxRR','dtNote','dtImgLink',
+  var ids=['dtEntry','dtTP','dtSL2','dtRisk','dtLots','dtPnl','dtMaxRR','dtTPMaxRR','dtNote','dtImgLink',
            'dtTimePos','dtSetupDur','dtClose','dtFees','dtComm'];
   ids.forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   ['dtAssetSel','dtResult','dtSetupClass','dtCandle','dtCode','dtMode','dtTF','dtMitZone',
@@ -13794,7 +13832,11 @@ if(document.readyState==='loading'){
           <label style="display:flex;justify-content:space-between;align-items:center;">Result <button onclick="openDropEdit('dtResult','Result')" style="font-size:9px;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;">✎ Edit</button></label>
           <select class="form-input" id="dtResult" onchange="dtCalcAll()"><option value="">Select</option></select>
         </div>
-        <div class="form-field"><label>Max RR</label><input class="form-input" id="dtMaxRR" type="number" step="0.01" placeholder="0.00"></div>
+        <div class="form-field"><label>Max RR</label><input class="form-input" id="dtMaxRR" type="number" step="0.01" placeholder="0.00" oninput="dtCalcAll()"></div>
+        <div class="form-field">
+          <label style="display:flex;align-items:center;gap:4px;">TP Max RR <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(ระยะ TP Max)</span></label>
+          <input class="form-input" id="dtTPMaxRR" type="number" step="any" placeholder="e.g. 29500" oninput="dtCalcMaxRR()" style="border-color:var(--accent);opacity:.85;">
+        </div>
       </div>
       <!-- RR auto-calc -->
       <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:16px;font-size:11px;margin-bottom:4px;">
