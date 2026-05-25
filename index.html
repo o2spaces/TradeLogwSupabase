@@ -1405,10 +1405,15 @@ var _supabase = null;
                 <option value="BE">— BE (Break Even)</option>
               </select>
             </div>
-            <div class="form-field"><label>Max RR</label><input class="form-input" id="oMaxRR" type="number" step="0.1" placeholder="e.g. 3.0" oninput="calcMaxRR()"></div>
-            <div class="form-field">
-              <label style="display:flex;align-items:center;gap:4px;">TP Max RR <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(ระยะ TP Max)</span></label>
-              <input class="form-input" id="oTPMaxRR" type="number" step="any" placeholder="e.g. 29500" oninput="calcMaxRR()" style="border-color:var(--accent);opacity:.85;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="form-field" style="margin:0;">
+                <label>Max RR</label>
+                <input class="form-input" id="oMaxRR" type="number" step="0.1" placeholder="e.g. 3.0" oninput="calcMaxRR()">
+              </div>
+              <div class="form-field" style="margin:0;">
+                <label style="display:flex;align-items:center;gap:3px;">TP Max RR <span style="font-size:9px;color:var(--accent);font-weight:400;">(ราคา TP Max)</span></label>
+                <input class="form-input" id="oTPMaxRR" type="number" step="any" placeholder="ใส่ราคา TP Max" oninput="calcMaxRR()" style="border-color:var(--accent);">
+              </div>
             </div>
           </div>
           <!-- RR auto-calc display -->
@@ -13832,10 +13837,15 @@ if(document.readyState==='loading'){
           <label style="display:flex;justify-content:space-between;align-items:center;">Result <button onclick="openDropEdit('dtResult','Result')" style="font-size:9px;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;">✎ Edit</button></label>
           <select class="form-input" id="dtResult" onchange="dtCalcAll()"><option value="">Select</option></select>
         </div>
-        <div class="form-field"><label>Max RR</label><input class="form-input" id="dtMaxRR" type="number" step="0.01" placeholder="0.00" oninput="dtCalcAll()"></div>
-        <div class="form-field">
-          <label style="display:flex;align-items:center;gap:4px;">TP Max RR <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(ระยะ TP Max)</span></label>
-          <input class="form-input" id="dtTPMaxRR" type="number" step="any" placeholder="e.g. 29500" oninput="dtCalcMaxRR()" style="border-color:var(--accent);opacity:.85;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="form-field" style="margin:0;">
+            <label>Max RR</label>
+            <input class="form-input" id="dtMaxRR" type="number" step="0.01" placeholder="0.00" oninput="dtCalcAll()">
+          </div>
+          <div class="form-field" style="margin:0;">
+            <label style="display:flex;align-items:center;gap:3px;">TP Max RR <span style="font-size:9px;color:var(--accent);font-weight:400;">(ราคา TP Max)</span></label>
+            <input class="form-input" id="dtTPMaxRR" type="number" step="any" placeholder="ใส่ราคา TP Max" oninput="dtCalcMaxRR()" style="border-color:var(--accent);">
+          </div>
         </div>
       </div>
       <!-- RR auto-calc -->
