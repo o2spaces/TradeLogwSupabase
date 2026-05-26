@@ -4965,12 +4965,17 @@ function updateOrderDisc(v){
   if(el) el.textContent=v;
 }
 function _parseEntryTime(t){
-  // Priority 1: already parsed clean time "HH:mm"
-  if(t.entryDate&&t.entryDate.match(/^\d{1,2}:\d{2}$/)) return t.entryDate;
-  // Priority 2: parse from entryDate if it contains datetime
-  if(t.entryDate){var _m=t.entryDate.match(/[T ]\s*(\d{1,2}:\d{2})/);if(_m) return _m[1];}
+  // Support both camelCase (local) and snake_case (Supabase)
+  var ed = t.entryDate || t.entry_date || '';
+  // Priority 1: clean time "HH:mm"
+  if(ed && ed.match(/^\d{1,2}:\d{2}$/)) return ed;
+  // Priority 2: extract from datetime string "2026-05-13T14:13" or "2026-05-13 14:13"
+  if(ed){ var _m=ed.match(/[T ]\s*(\d{1,2}:\d{2})/); if(_m) return _m[1]; }
+  // Priority 3: entryTime field
+  if(t.entryTime){ var _m2=String(t.entryTime).match(/(\d{1,2}:\d{2})/); if(_m2) return _m2[1]; }
+  // Priority 4: entryDateRaw
   var raw=t.entryDateRaw||'';
-  if(raw){var _m=raw.match(/[T ]\s*(\d{1,2}:\d{2})/);if(_m) return _m[1];}
+  if(raw){ var _m3=raw.match(/[T ]\s*(\d{1,2}:\d{2})/); if(_m3) return _m3[1]; }
   return '';
 }
 function _fmtEntryTime(t){
@@ -8287,7 +8292,7 @@ function _renderDurationAnalysis(trades){
   ];
   var data = buckets.map(function(b){ return Object.assign({},b,{trades:[]}); });
   trades.forEach(function(t){
-    var dur = _parseDurationToMins(t.timeInPos||t.time_in_pos||'');
+    var dur = _parseDurationToMins(t.timeInPos||t.time_in_pos||t.setupDuration||'');
     if(dur===null) return;
     var bk = data.find(function(b){ return dur>=b.min && dur<b.max; });
     if(bk) bk.trades.push(t);
@@ -8362,25 +8367,26 @@ function _renderCalendarHeatmap(trades){
     }
     weeks.push(week);
   }
-  var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var days=['S','M','T','W','T','F','S'];
+  var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var dayLabels=['','M','','W','','F',''];  // only show M,W,F to save space
   var html='<div style="font-size:13px;font-weight:600;margin-bottom:10px;">📆 PnL Calendar Heatmap</div>';
   html+='<div style="display:flex;gap:3px;overflow-x:auto;padding-bottom:4px;">';
-  // Day labels
-  html+='<div style="display:flex;flex-direction:column;gap:2px;padding-top:18px;flex-shrink:0;">';
-  days.forEach(function(d,i){
-    html+='<div style="width:10px;height:10px;font-size:8px;color:var(--text-muted);line-height:10px;text-align:center;">'+(i%2===1?d:'')+'</div>';
+  // Day labels column (left side)
+  html+='<div style="display:flex;flex-direction:column;gap:2px;margin-top:18px;flex-shrink:0;">';
+  dayLabels.forEach(function(dl){
+    html+='<div style="width:14px;height:10px;font-size:8px;color:var(--text-muted);line-height:10px;text-align:right;padding-right:2px;">'+dl+'</div>';
   });
   html+='</div>';
+  var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   weeks.forEach(function(week,wi){
     var firstDate=new Date(week[0].date+'T12:00');
     html+='<div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">';
-    // Month label on first week of month
-    var showMonth = (firstDate.getDate()<=7);
-    html+='<div style="height:14px;font-size:8px;color:var(--text-muted);text-align:center;white-space:nowrap;">'+(showMonth?months[firstDate.getMonth()]:'')+'</div>';
+    var showMonth=(firstDate.getDate()<=7);
+    html+='<div style="height:14px;font-size:8px;color:var(--text-muted);white-space:nowrap;overflow:hidden;">'+(showMonth?months[firstDate.getMonth()]:'')+'</div>';
     week.forEach(function(day){
-      var title=day.date+(day.pnl?(day.pnl>=0?' +$'+day.pnl.toFixed(0):' -$'+Math.abs(day.pnl).toFixed(0)):'');
-      html+='<div title="'+title+'" style="width:10px;height:10px;border-radius:2px;background:'+(day.future?'transparent':getColor(day.pnl))+';cursor:'+(day.pnl?'pointer':'default')+';transition:transform .1s;" onmouseover="this.style.transform=\'scale(1.4)\'" onmouseout="this.style.transform=\'\'"></div>';
+      var pnlStr=day.pnl?(day.pnl>=0?' +$'+day.pnl.toFixed(0):' $'+day.pnl.toFixed(0)):'';
+      var title=day.date+pnlStr;
+      html+='<div title="'+title+'" style="width:10px;height:10px;border-radius:2px;background:'+(day.future?'transparent':getColor(day.pnl))+';cursor:'+(day.pnl?'pointer':'default')+';transition:transform .1s;" onmouseover="this.style.transform=\'scale(1.5)\'" onmouseout="this.style.transform=\'\'"></div>';
     });
     html+='</div>';
   });
@@ -10313,18 +10319,20 @@ async function renderDashboard(){
     if(_supabase && uid){
       try{
         var res=await Promise.all([
-          _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,date').eq('user_id',uid).eq('is_deleted',false),
+          _supabase.from('trades').select('portfolio,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,date,time_in_pos,setup_class,rr').eq('user_id',uid).eq('is_deleted',false),
           _supabase.from('portfolios').select('id,name').eq('user_id',uid).eq('is_deleted',false),
         ]);
         journalTrades=(res[0].data||[]).map(function(t){
-          // เก็บ entry_date เต็ม (รวม time) ไว้เพื่อ auto-detect session
           var rawEntry = t.entry_date || t.date || t.close_date || '';
           var dateOnly = rawEntry ? rawEntry.substring(0,10) : '';
           return Object.assign({},t,{
-            entry_date: rawEntry,      // เก็บเต็มๆ ไว้ให้ _groupBySession ดึง time ได้
-            _dateOnly: dateOnly,       // date-only สำหรับ calendar
+            entry_date: rawEntry,
+            _dateOnly: dateOnly,
             date: t.date || dateOnly,
-            sessions: t.sessions || t.session || ''
+            sessions: t.sessions || t.session || '',
+            // Normalize fields for analytics functions
+            entryDate: rawEntry,           // for _parseEntryTime
+            timeInPos: t.time_in_pos || t.timeInPos || '',  // for duration analysis
           });
         });
         ports=res[1].data||[];
