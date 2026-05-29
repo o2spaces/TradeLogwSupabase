@@ -8067,6 +8067,7 @@ function confirmFundedImport(){
   var _importLbl={topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'};
   showToast('✅ Import '+count+' trades จาก '+(_importLbl[_fundedBroker]||_fundedBroker)+' แล้ว','success');
   _fundedImportData=[];
+  var _fm=document.getElementById('fundedImportModal');if(_fm)_fm.remove();
   if(_supabase&&batchTrades.length)sendSheet('batchSaveTrades',{trades:batchTrades});
 }
 
