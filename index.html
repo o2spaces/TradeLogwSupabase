@@ -10292,6 +10292,7 @@ async function renderDashboard(){
     // ── 1. Load ALL DT trades from Supabase (unfiltered) ─────
     var dtTrades=[];
     var dsNameMap = {};
+    var rawDS = [];  // declared here so accessible in step 3 even if try fails
     try{
       var uid2=_authSession&&_authSession._sbUserId;
       if(_supabase && uid2){
@@ -10301,7 +10302,7 @@ async function renderDashboard(){
           _supabase.from('datasets').select('id,name').eq('user_id',uid2).eq('is_deleted',false)
         ]);
         var rawDT = dtRes[0].data||[];
-        var rawDS = dtRes[1].data||[];
+        rawDS = dtRes[1].data||[];
         rawDS.forEach(function(d){ dsNameMap[d.id]=d.name; });
         if(!window.DS) window.DS={};
         window.DS.list = rawDS;
@@ -10386,12 +10387,19 @@ async function renderDashboard(){
 
     // ── 3. Build combined ports list ───────────────────────────
     var allPorts=ports.slice();
-    // Add one port button per DT dataset
+    // Add ALL datasets from rawDS first (even those with no trades)
     var dtPortSeen={};
+    (window.DS&&DS.list||rawDS||[]).forEach(function(d){
+      var portId='__DS__'+d.id;
+      if(!dtPortSeen[portId]){
+        dtPortSeen[portId]=true;
+        allPorts.push({id:portId, name:d.name||'📊 Data', _isDT:true});
+      }
+    });
+    // Also catch any datasets only visible via dtTrades (fallback path)
     dtTrades.forEach(function(t){
       if(!dtPortSeen[t.portfolio]){
         dtPortSeen[t.portfolio]=true;
-        var dsId = t.portfolio.replace('__DS__','');
         var dsName = t._dsName || '📊 Data';
         allPorts.push({id:t.portfolio, name:dsName, _isDT:true});
       }
