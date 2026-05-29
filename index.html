@@ -8297,7 +8297,20 @@ function _renderDurationAnalysis(trades){
   ];
   var data = buckets.map(function(b){ return Object.assign({},b,{trades:[]}); });
   trades.forEach(function(t){
-    var dur = _parseDurationToMins(t.timeInPos||t.time_in_pos||t.setupDuration||'');
+    var durStr = t.timeInPos||t.time_in_pos||t.setupDuration||'';
+    // ถ้าไม่มี timeInPos ให้คำนวณจาก entry_date - close_date
+    var dur = _parseDurationToMins(durStr);
+    if(dur===null){
+      var ed=t.entry_date||t.entryDate||''; var cd=t.close_date||t.closeDate||'';
+      if(ed && cd && ed.length>10 && cd.length>=10){
+        try{
+          var da=new Date(ed.replace(' ','T')); var db=new Date(cd.replace(' ','T')+'T00:00:00');
+          // ถ้า close_date เป็นแค่ date ให้ใช้เวลาเปิดบวก 1 นาที
+          if(cd.length===10) db=da; // unknown duration, skip
+          else { var s=Math.round((db-da)/1000)/60; if(s>0 && s<99999) dur=s; }
+        }catch(e){}
+      }
+    }
     if(dur===null) return;
     var bk = data.find(function(b){ return dur>=b.min && dur<b.max; });
     if(bk) bk.trades.push(t);
@@ -8418,7 +8431,8 @@ function _renderTimeOfDayAnalysis(trades){
   var hours = {};
   for(var h=0;h<24;h++) hours[h]={trades:[],pnl:0,wins:0};
   trades.forEach(function(t){
-    var timeStr = _fmtEntryTime(t);
+    // ใช้ _parseEntryTime ที่ return plain "HH:MM" string ไม่ใช่ HTML
+    var timeStr = _parseEntryTime(t);
     if(!timeStr) return;
     var m=timeStr.match(/(\d{1,2}):/);
     if(!m) return;
@@ -8433,16 +8447,18 @@ function _renderTimeOfDayAnalysis(trades){
   if(!used.length) return '<div style="color:var(--text-muted);font-size:11px;">ยังไม่มีข้อมูล Entry Time</div>';
   var maxTrades=Math.max.apply(null,used.map(function(h){return hours[h].trades.length;}));
   var html='<div style="font-size:13px;font-weight:600;margin-bottom:10px;">🕐 Best/Worst Time of Day</div>';
-  html+='<div style="display:grid;grid-template-columns:38px 1fr 44px 64px;gap:3px;font-size:9px;color:var(--text-muted);margin-bottom:4px;align-items:center;">'
-    +'<span>Hour</span><span>Activity</span><span style="text-align:center;">WR%</span><span style="text-align:right;">Avg P&L</span></div>';
+  html+='<div style="display:grid;grid-template-columns:38px 1fr 36px 52px 64px;gap:3px;font-size:9px;color:var(--text-muted);margin-bottom:4px;align-items:center;">'
+    +'<span>Hour</span><span>Activity</span><span style="text-align:center;">WR%</span><span style="text-align:right;">Avg P&L</span><span style="text-align:right;">Total P&L</span></div>';
   used.sort(function(a,b){return a-b;}).forEach(function(h){
     var bk=hours[h];
     var wr=bk.trades.length?Math.round(bk.wins/bk.trades.length*100):0;
     var avg=bk.trades.length?bk.pnl/bk.trades.length:0;
+    var tot=bk.pnl;
     var barW=Math.round(bk.trades.length/maxTrades*100);
     var wrColor=wr>=60?'var(--green)':wr>=40?'var(--amber)':'var(--red)';
     var pColor=avg>=0?'var(--green)':'var(--red)';
-    html+='<div style="display:grid;grid-template-columns:38px 1fr 44px 64px;gap:3px;align-items:center;padding:2px 0;border-bottom:1px solid var(--border);">'
+    var tColor=tot>=0?'var(--green)':'var(--red)';
+    html+='<div style="display:grid;grid-template-columns:38px 1fr 36px 52px 64px;gap:3px;align-items:center;padding:2px 0;border-bottom:1px solid var(--border);">'
       +'<span style="font-size:10px;color:var(--text-secondary);font-family:var(--font-mono);">'+('0'+h).slice(-2)+':00</span>'
       +'<div style="display:flex;align-items:center;gap:4px;">'
       +'<div style="flex:1;height:6px;background:var(--bg-secondary);border-radius:3px;overflow:hidden;">'
@@ -8450,6 +8466,7 @@ function _renderTimeOfDayAnalysis(trades){
       +'<span style="font-size:9px;color:var(--text-muted);">'+bk.trades.length+'</span></div>'
       +'<span style="font-size:10px;color:'+wrColor+';text-align:center;font-weight:600;">'+wr+'%</span>'
       +'<span style="font-size:10px;color:'+pColor+';text-align:right;font-family:var(--font-mono);">'+(avg>=0?'+':'')+'$'+Math.abs(avg).toFixed(0)+'</span>'
+      +'<span style="font-size:10px;color:'+tColor+';text-align:right;font-family:var(--font-mono);font-weight:600;">'+(tot>=0?'+':'')+'$'+Math.abs(tot).toFixed(0)+'</span>'
       +'</div>';
   });
   return html;
@@ -10280,7 +10297,7 @@ async function renderDashboard(){
       if(_supabase && uid2){
         // Fetch ALL data_trades and ALL datasets for this user
         var dtRes = await Promise.all([
-          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date').eq('user_id',uid2).eq('is_deleted',false),
+          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,time_in_pos,entry_time').eq('user_id',uid2).eq('is_deleted',false),
           _supabase.from('datasets').select('id,name').eq('user_id',uid2).eq('is_deleted',false)
         ]);
         var rawDT = dtRes[0].data||[];
@@ -10293,11 +10310,16 @@ async function renderDashboard(){
           var dsName = dsNameMap[dsId] || '📊 Data';
           var rawEntry=t.entry_date||t.entryDate||t.date||'';
           var dateOnly=rawEntry?rawEntry.substring(0,10):'';
+          // Reconstruct full entry datetime so _parseEntryTime can extract HH:MM
+          var entryTimeStr = t.entry_time || '';
+          var fullEntryDt = (dateOnly && entryTimeStr) ? (dateOnly+'T'+entryTimeStr) : rawEntry;
           return {portfolio:'__DS__'+dsId, _dsName:dsName,
             pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
             mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
             sessions:t.session||t.sessions||'',
-            entry_date:dateOnly, close_date:(t.close_date||t.closeDate||'').substring(0,10)};
+            entry_date:fullEntryDt, entryDate:fullEntryDt,
+            timeInPos:t.time_in_pos||t.timeInPos||'',
+            close_date:(t.close_date||t.closeDate||'').substring(0,10)};
         });
       } else {
         // Fallback: use DT cache
@@ -10308,11 +10330,14 @@ async function renderDashboard(){
             var dsId=t.dataset_id||'__DT_default__';
             var rawEntry=t.entryDate||t.entry_date||t.date||'';
             var dateOnly=rawEntry?rawEntry.substring(0,10):'';
+            var fullEntryDt = rawEntry || dateOnly;
             return {portfolio:'__DS__'+dsId,_dsName:dsNameMap[dsId]||'📊 Data',
               pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
               mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
               sessions:t.session||t.sessions||'',
-              entry_date:dateOnly, close_date:(t.closeDate||t.close_date||'').substring(0,10)};
+              entry_date:fullEntryDt, entryDate:fullEntryDt,
+              timeInPos:t.time_in_pos||t.timeInPos||'',
+              close_date:(t.closeDate||t.close_date||'').substring(0,10)};
           });
         }
       }
