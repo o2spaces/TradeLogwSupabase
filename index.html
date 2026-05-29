@@ -7827,12 +7827,16 @@ function parseFundedApexRithmic(text){
     var rawQty=parseInt(p[QTY_IDX]||'0')||0;
     var qty=Math.abs(rawQty);if(qty<=0)continue;
     var sym=(p[SYM_IDX]||'MNQ').trim().replace(/[FGHJKMNQUVXZ]\d+$/,'');if(!sym)sym='MNQ';
-    var gross=parseFloat(p[GROSS_IDX]||'0')||0;
-    // Rithmic: Opening fill มี Gross P/L = 0, Closing fill มี Gross P/L ≠ 0
-    var isClose = gross !== 0;
+    var otype=(OTYPE_IDX>=0?(p[OTYPE_IDX]||''):'').trim();
+    // ── isClose rule (ตาม R Trader Pro) ──
+    // OPEN  = Gross P/L เป็น 0 หรือว่าง (จ่ายแค่ commission)
+    // CLOSE = Gross P/L != 0 (มี realized P/L)
+    var grossRaw=(p[GROSS_IDX]||'').trim();
+    var grossVal=grossRaw===''?0:parseFloat(grossRaw)||0;
+    var isClose=(grossVal!==0);
     fills.push({dt:dt,sym:sym,side:(p[SIDE_IDX]||'').trim(),qty:qty,
       price:parseFloat(p[PRICE_IDX]||'0')||0,
-      gross:gross,
+      gross:grossVal,
       fee:parseFloat(p[FEE_IDX]||'0')||0,
       net:parseFloat(p[NET_IDX]||'0')||0,
       isClose:isClose});
@@ -7858,7 +7862,10 @@ function parseFundedApexRithmic(text){
     }
   });
 
-  // Match using Order type: isClose=true → closing fill, false → opening fill
+  // Match using Gross!=0 rule: isClose=true → closing fill, false → opening fill
+  // net ของ trade = closing_net - entry_fee
+  // ใช้ price-aware FIFO: derive expected entry price จาก gross เพื่อ verify match
+  var MNQ_MULT=2.0;
   var openStack={};
   _fundedImportData=[];
 
@@ -7866,47 +7873,79 @@ function parseFundedApexRithmic(text){
     var sym=ev.sym;
     if(!openStack[sym])openStack[sym]=[];
     var stack=openStack[sym];
+    var tradeSide=ev.side==='Sell'?'Long':'Short';
+    var opp=ev.side==='Buy'?'Sell':'Buy';
 
     if(ev.isClose){
-      // Closing fill → match FIFO against open stack (opposite side)
-      var opp=ev.side==='Buy'?'Sell':'Buy';
-      var remQty=ev.qty,remGross=ev.gross,remFee=ev.fee,remNet=ev.net;
-      while(remQty>0&&stack.length&&stack[0].side===opp){
-        var op=stack[0];
+      var mult=MNQ_MULT;
+      var derivedEntry=tradeSide==='Long'
+        ?(ev.price-ev.gross/(ev.qty*mult))
+        :(ev.price+ev.gross/(ev.qty*mult));
+
+      var remQty=ev.qty,remNet=ev.net,remFee=ev.fee,remGross=ev.gross;
+      var PRICE_TOL=2.5;
+
+      var matchIdx=-1;
+      for(var si=0;si<stack.length;si++){
+        if(stack[si].side===opp&&Math.abs(stack[si].price-derivedEntry)<=PRICE_TOL){
+          matchIdx=si;break;
+        }
+      }
+
+      if(matchIdx>=0){
+        var op=stack[matchIdx];
         var useQty=Math.min(remQty,op.qty);
-        var frac=ev.qty>0?useQty/ev.qty:1;
-        var opFrac=op._origQty>0?useQty/op._origQty:1;
-        var sliceNet=parseFloat((remNet*frac).toFixed(2));
-        var sliceFee=parseFloat((remFee*frac).toFixed(2));
-        var sliceGross=parseFloat((remGross*frac).toFixed(2));
-        var entryNet=parseFloat(((op._entryNet||0)*opFrac).toFixed(2));
-        var entryFee=parseFloat(((op._entryFee||0)*opFrac).toFixed(2));
-        var totalNet=parseFloat((sliceNet+entryNet).toFixed(2));
-        var totalFee=parseFloat((sliceFee+entryFee).toFixed(2));
-        // Gross P/L จริง = Net + total exchange fees (เพราะ Rithmic ให้ Gross=0 ที่ opening fill)
-        var totalGross=parseFloat((totalNet+totalFee).toFixed(2));
-        var tradeSide=op.side==='Buy'?'Long':'Short';
+        var closeFrac=ev.qty>0?useQty/ev.qty:1;
+        var openFrac=op._origQty>0?useQty/op._origQty:1;
+        var sliceCloseNet=parseFloat((remNet*closeFrac).toFixed(2));
+        var exitFee=parseFloat((remFee*closeFrac).toFixed(2));
+        var entryFee=parseFloat(((op._fee||0)*openFrac).toFixed(2));
+        var tradeNet=parseFloat((sliceCloseNet-entryFee).toFixed(2));
+        var tradeGross=parseFloat((remGross*closeFrac).toFixed(2));
+        var tradeFee=parseFloat((exitFee+entryFee).toFixed(2));
         var dateKey=op.dt.substring(0,10);
         _fundedImportData.push({
           asset:sym+'1',side:tradeSide,lots:String(useQty),
           entry:op.price.toFixed(2),close:ev.price.toFixed(2),
-          tp:totalNet>=0?ev.price.toFixed(2):'',
-          sl:totalNet<0?ev.price.toFixed(2):'',
-          pnl:totalNet.toFixed(2),fees:totalGross.toFixed(2),commission:totalFee.toFixed(2),
-          result:totalNet>0?'Win':totalNet<0?'Loss':'BE',
+          tp:tradeNet>=0?ev.price.toFixed(2):'',
+          sl:tradeNet<0?ev.price.toFixed(2):'',
+          pnl:tradeNet.toFixed(2),fees:tradeGross.toFixed(2),commission:tradeFee.toFixed(2),
+          result:tradeNet>0?'Win':tradeNet<0?'Loss':'BE',
           entryDate:op.dt.substring(0,16),closeDate:ev.dt.substring(0,16),
           timeInPos:_calcTimeInPos(op.dt,ev.dt),
           note:'',imgLink:'',maxRR:'',setupClass:'',candle:'',code:'',
           mode:'',tf:'',trend:'',zone:'',confirm:'',sessions:'',
           emotion:5,discipline:5,id:_uuid(),_dateKey:dateKey,
         });
-        op.qty-=useQty;remQty-=useQty;
-        if(op.qty<=0)stack.shift();
+        op.qty-=useQty;
+        if(op.qty<=0)stack.splice(matchIdx,1);
+        remQty-=useQty;
+        if(remQty>0){
+          var rf2=remQty/ev.qty;
+          stack.push({side:ev.side,qty:remQty,price:ev.price,dt:ev.dt,
+            _origQty:remQty,_fee:parseFloat((remFee*rf2).toFixed(2))});
+        }
+      } else {
+        // prev-day carry — use closing_net directly
+        var prevNet=parseFloat(remNet.toFixed(2));
+        var dateKeyPrev=ev.dt.substring(0,10);
+        _fundedImportData.push({
+          asset:sym+'1',side:tradeSide,lots:String(remQty),
+          entry:derivedEntry.toFixed(2),close:ev.price.toFixed(2),
+          tp:prevNet>=0?ev.price.toFixed(2):'',
+          sl:prevNet<0?ev.price.toFixed(2):'',
+          pnl:prevNet.toFixed(2),fees:remGross.toFixed(2),commission:remFee.toFixed(2),
+          result:prevNet>0?'Win':prevNet<0?'Loss':'BE',
+          entryDate:ev.dt.substring(0,16),closeDate:ev.dt.substring(0,16),
+          timeInPos:'',
+          note:'[prev-day]',imgLink:'',maxRR:'',setupClass:'',candle:'',code:'',
+          mode:'',tf:'',trend:'',zone:'',confirm:'',sessions:'',
+          emotion:5,discipline:5,id:_uuid(),_dateKey:dateKeyPrev,
+        });
       }
     } else {
-      // Opening fill → push to stack
       stack.push({side:ev.side,qty:ev.qty,price:ev.price,dt:ev.dt,
-        _origQty:ev.qty,_entryGross:ev.gross,_entryFee:ev.fee,_entryNet:ev.net});
+        _origQty:ev.qty,_fee:ev.fee});
     }
   });
 
