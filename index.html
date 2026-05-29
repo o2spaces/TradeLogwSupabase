@@ -3986,7 +3986,8 @@ function drawEQ(){
   setTimeout(function(){
     var canvas=document.getElementById('eqChart');
     if(!canvas) return;
-    var a=allTrades().slice().sort(function(x,y){return (x.date||'').localeCompare(y.date||'');});
+    function _eqDate(t){return t.date||t.entryDate||t.entry_date||t._dateKey||'';}
+    var a=allTrades().slice().sort(function(x,y){return _eqDate(x).localeCompare(_eqDate(y));});
     if(a.length<2) return;
     try{if(S.eqChart){S.eqChart.destroy();S.eqChart=null;}}catch(e){S.eqChart=null;}
     // force canvas size from parent
@@ -4004,7 +4005,8 @@ function drawEQW(){
   setTimeout(function(){
     var canvas=document.getElementById('eqChartW');
     if(!canvas) return;
-    var a=allTrades().slice().sort(function(x,y){return (x.date||'').localeCompare(y.date||'');});
+    function _eqDateW(t){return t.date||t.entryDate||t.entry_date||t._dateKey||'';}
+    var a=allTrades().slice().sort(function(x,y){return _eqDateW(x).localeCompare(_eqDateW(y));});
     if(a.length<2) return;
     try{if(S.eqChartW){S.eqChartW.destroy();S.eqChartW=null;}}catch(e){S.eqChartW=null;}
     var wrap=canvas.parentElement;
@@ -9201,7 +9203,7 @@ function _renderEquityPerPortfolio(trades, ports){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">';
   ports.forEach(function(p){
     var portTrades = trades.filter(function(t){ return t.portfolio===p.id; });
-    portTrades.sort(function(a,b){ return (a.entry_date||'')>(b.entry_date||'')?1:-1; });
+    portTrades.sort(function(a,b){ var da=a.date||a.entryDate||a.entry_date||a._dateKey||''; var db=b.date||b.entryDate||b.entry_date||b._dateKey||''; return da>db?1:-1; });
     var cum=0, peak=0, maxDD=0, points=[];
     portTrades.forEach(function(t){ cum+=parseFloat(t.pnl)||0; points.push(cum); if(cum>peak)peak=cum; var d=cum-peak; if(d<maxDD)maxDD=d; });
     var pnl = cum;
@@ -13282,7 +13284,8 @@ function dtDrawEquityCurve(rows){
   if(valEl) valEl.style.display='inline';
 
   // Compute cumulative PnL
-  var sorted=rows.slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+  function _dtEqDate(t){return t.date||t.entryDate||t.entry_date||t._dateKey||'';}
+  var sorted=rows.slice().sort(function(a,b){return _dtEqDate(a).localeCompare(_dtEqDate(b));});
   var cumPnl=0,points=[],labels=[];
   sorted.forEach(function(t,i){
     cumPnl+=parseFloat(t.pnl)||0;
