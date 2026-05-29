@@ -7828,9 +7828,9 @@ function parseFundedApexRithmic(text){
     var qty=Math.abs(rawQty);if(qty<=0)continue;
     var sym=(p[SYM_IDX]||'MNQ').trim().replace(/[FGHJKMNQUVXZ]\d+$/,'');if(!sym)sym='MNQ';
     var gross=parseFloat(p[GROSS_IDX]||'0')||0;
-    var otype=(OTYPE_IDX>=0?(p[OTYPE_IDX]||''):'').trim();
-    // Limit( = Opening fill, Market( = Closing fill (ตาม Order type)
-    var isClose = otype.indexOf('Market')=== 0;
+    // Gross P/L = 0 → Opening fill (ทั้ง Limit entry และ Market entry)
+    // Gross P/L ≠ 0 → Closing fill (ทั้ง Limit TP hit และ Market SL/close)
+    var isClose = gross !== 0;
     fills.push({dt:dt,sym:sym,side:(p[SIDE_IDX]||'').trim(),qty:qty,
       price:parseFloat(p[PRICE_IDX]||'0')||0,
       gross:gross,
@@ -7840,7 +7840,11 @@ function parseFundedApexRithmic(text){
   }
 
   if(!fills.length){showToast('❌ ไม่พบข้อมูล fills','error');return;}
-  fills.sort(function(a,b){return a.dt<b.dt?-1:a.dt>b.dt?1:0;});
+  // เรียง Open ก่อน Close เมื่อ timestamp เดียวกัน (กรณี SL ที่ open+close พร้อมกัน)
+  fills.sort(function(a,b){
+    if(a.dt<b.dt) return -1; if(a.dt>b.dt) return 1;
+    return (a.isClose?1:0)-(b.isClose?1:0);
+  });
 
   // Merge same-event fills (same dt+side+price+sym+isClose)
   var evMap={};var evList=[];
@@ -10298,7 +10302,7 @@ async function renderDashboard(){
       if(_supabase && uid2){
         // Fetch ALL data_trades and ALL datasets for this user
         var dtRes = await Promise.all([
-          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,time_in_pos').eq('user_id',uid2).eq('is_deleted',false),
+          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,side,lots,entry,close,mode,setup_class,sessions,entry_date,close_date,time_in_pos,rr,risk').eq('user_id',uid2).eq('is_deleted',false),
           _supabase.from('datasets').select('id,name').eq('user_id',uid2).eq('is_deleted',false)
         ]);
         var rawDT = dtRes[0].data||[];
@@ -10309,18 +10313,33 @@ async function renderDashboard(){
         dtTrades = rawDT.map(function(t){
           var dsId = t.dataset_id || '__DT_default__';
           var dsName = dsNameMap[dsId] || '📊 Data';
-          var rawEntry=t.entry_date||t.entryDate||t.date||'';
-          var dateOnly=rawEntry?rawEntry.substring(0,10):'';
-          // Reconstruct full entry datetime so _parseEntryTime can extract HH:MM
-          // entry_date จาก data_trades มักเป็น full datetime อยู่แล้ว ใช้ตรงๆ
+          var rawEntry = t.entry_date || t.date || '';
+          var dateOnly  = rawEntry ? rawEntry.substring(0,10) : '';
+          // entry_date ใน data_trades เป็น full datetime "2026-05-25T14:13:00"
           var fullEntryDt = rawEntry || dateOnly;
-          return {portfolio:'__DS__'+dsId, _dsName:dsName,
-            pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
-            mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
-            sessions:t.session||t.sessions||'',
-            entry_date:fullEntryDt, entryDate:fullEntryDt,
-            timeInPos:t.time_in_pos||t.timeInPos||'',
-            close_date:(t.close_date||t.closeDate||'').substring(0,10)};
+          return {
+            portfolio:   '__DS__'+dsId,
+            _dsName:     dsName,
+            pnl:         parseFloat(t.pnl)        || 0,
+            fees:        parseFloat(t.fees)        || 0,
+            commission:  parseFloat(t.commission)  || 0,
+            result:      t.result      || '',
+            asset:       t.asset       || '',
+            side:        t.side        || '',
+            lots:        parseFloat(t.lots)  || 0,
+            entry:       parseFloat(t.entry) || 0,
+            close:       parseFloat(t.close) || 0,
+            mode:        t.mode        || '',
+            setup_class: t.setup_class || '',
+            sessions:    t.sessions    || '',
+            rr:          parseFloat(t.rr)   || 0,
+            risk:        t.risk        || '',
+            timeInPos:   t.time_in_pos || '',
+            entry_date:  fullEntryDt,
+            entryDate:   fullEntryDt,
+            close_date:  (t.close_date || '').substring(0,10),
+            date:        dateOnly,
+          };
         });
       } else {
         // Fallback: use DT cache
@@ -10332,13 +10351,29 @@ async function renderDashboard(){
             var rawEntry=t.entryDate||t.entry_date||t.date||'';
             var dateOnly=rawEntry?rawEntry.substring(0,10):'';
             var fullEntryDt = rawEntry || dateOnly;
-            return {portfolio:'__DS__'+dsId,_dsName:dsNameMap[dsId]||'📊 Data',
-              pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
-              mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
-              sessions:t.session||t.sessions||'',
-              entry_date:fullEntryDt, entryDate:fullEntryDt,
-              timeInPos:t.time_in_pos||t.timeInPos||'',
-              close_date:(t.closeDate||t.close_date||'').substring(0,10)};
+            return {
+              portfolio:   '__DS__'+dsId,
+              _dsName:     dsNameMap[dsId]||'📊 Data',
+              pnl:         parseFloat(t.pnl)       || 0,
+              fees:        parseFloat(t.fees)       || 0,
+              commission:  parseFloat(t.commission) || 0,
+              result:      t.result      || '',
+              asset:       t.asset       || '',
+              side:        t.side        || '',
+              lots:        parseFloat(t.lots)  || 0,
+              entry:       parseFloat(t.entry) || 0,
+              close:       parseFloat(t.close) || 0,
+              mode:        t.mode        || '',
+              setup_class: t.setup_class || t.setupClass || '',
+              sessions:    t.sessions    || t.session || '',
+              rr:          parseFloat(t.rr) || 0,
+              risk:        t.risk || '',
+              timeInPos:   t.time_in_pos || t.timeInPos || '',
+              entry_date:  fullEntryDt,
+              entryDate:   fullEntryDt,
+              close_date:  (t.close_date||t.closeDate||'').substring(0,10),
+              date:        dateOnly,
+            };
           });
         }
       }
