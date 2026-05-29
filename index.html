@@ -10298,7 +10298,7 @@ async function renderDashboard(){
       if(_supabase && uid2){
         // Fetch ALL data_trades and ALL datasets for this user
         var dtRes = await Promise.all([
-          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,time_in_pos,entry_time').eq('user_id',uid2).eq('is_deleted',false),
+          _supabase.from('data_trades').select('dataset_id,pnl,result,asset,mode,setup_class,sessions,entry_date,close_date,time_in_pos').eq('user_id',uid2).eq('is_deleted',false),
           _supabase.from('datasets').select('id,name').eq('user_id',uid2).eq('is_deleted',false)
         ]);
         var rawDT = dtRes[0].data||[];
@@ -10312,8 +10312,8 @@ async function renderDashboard(){
           var rawEntry=t.entry_date||t.entryDate||t.date||'';
           var dateOnly=rawEntry?rawEntry.substring(0,10):'';
           // Reconstruct full entry datetime so _parseEntryTime can extract HH:MM
-          var entryTimeStr = t.entry_time || '';
-          var fullEntryDt = (dateOnly && entryTimeStr) ? (dateOnly+'T'+entryTimeStr) : rawEntry;
+          // entry_date จาก data_trades มักเป็น full datetime อยู่แล้ว ใช้ตรงๆ
+          var fullEntryDt = rawEntry || dateOnly;
           return {portfolio:'__DS__'+dsId, _dsName:dsName,
             pnl:parseFloat(t.pnl)||0,result:t.result||'',asset:t.asset||'',
             mode:t.mode||t.code||'',setup_class:t.setupClass||t.setup_class||'',
@@ -10410,7 +10410,14 @@ async function renderDashboard(){
     var allTrades=journalTrades.concat(dtTrades);
 
     // ── 5. Filter by selected ports ───────────────────────────
+    var allPortIds = allPorts.map(function(p){return p.id;});
     var selectedPorts=window._dashSelectedPorts;
+    // ถ้า selectedPorts มี ID ที่ไม่มีใน allPorts ใหม่ → reset เป็น null (all)
+    if(selectedPorts && selectedPorts.length){
+      var valid = selectedPorts.filter(function(id){return allPortIds.indexOf(id)>=0;});
+      if(valid.length !== selectedPorts.length) selectedPorts = valid.length ? valid : null;
+    }
+    window._dashSelectedPorts = selectedPorts; // sync back
     var trades=selectedPorts&&selectedPorts.length
       ? allTrades.filter(function(t){return selectedPorts.indexOf(t.portfolio)>=0;})
       : allTrades;
