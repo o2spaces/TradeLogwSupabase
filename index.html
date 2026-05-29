@@ -8064,7 +8064,8 @@ function confirmFundedImport(){
   if(typeof renderWeekly==='function') renderWeekly();
   if(typeof drawEQ==='function') drawEQ();
   if(typeof drawEQW==='function') setTimeout(drawEQW,100);
-  showToast('✅ Import '+count+' trades จาก '+lbl+' แล้ว','success');
+  var _importLbl={topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'};
+  showToast('✅ Import '+count+' trades จาก '+(_importLbl[_fundedBroker]||_fundedBroker)+' แล้ว','success');
   _fundedImportData=[];
   if(_supabase&&batchTrades.length)sendSheet('batchSaveTrades',{trades:batchTrades});
 }
