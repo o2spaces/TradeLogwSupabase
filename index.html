@@ -12669,16 +12669,14 @@ function dtFiltered(){
     }
     // ── RR range filter ────────────────────────────────────────────
     if(fRRMin!==null||fRRMax!==null){
-      var tRR=parseFloat(t.maxRR||t.rr)||0;
-      // ถ้า fRRMin > 0 → ต้องมีค่า MaxRR และ >= fRRMin
-      // ถ้า fRRMin = 0 หรือไม่ได้กรอก → order ที่ไม่มี MaxRR ก็ผ่านได้
-      var hasRR = tRR > 0;
+      // ใช้ MaxRR เท่านั้น (ไม่ fallback ไป t.rr เพราะ t.rr คือ computed ratio ไม่ใช่ MaxRR)
+      var tMaxRR = parseFloat(t.maxRR) || 0;
       var minActive = fRRMin!==null && fRRMin > 0;
       var maxActive = fRRMax!==null && fRRMax > 0;
       if(minActive || maxActive){
-        if(!hasRR) return false; // ไม่มี MaxRR → ไม่ผ่าน
-        if(fRRMin!==null&&tRR<fRRMin) return false;
-        if(fRRMax!==null&&tRR>fRRMax) return false;
+        if(!tMaxRR) return false; // ไม่มี MaxRR → ไม่ผ่าน
+        if(fRRMin!==null && fRRMin>0 && tMaxRR<fRRMin) return false;
+        if(fRRMax!==null && fRRMax>0 && tMaxRR>fRRMax) return false;
       }
     }
     return true;
