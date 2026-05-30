@@ -12493,7 +12493,8 @@ function _dtLazyLoadPortTrades(pid){
 function dtFiltered(){
   // Note: dtLoad() is called by dsSwitch/OK button BEFORE dtRender/dtFiltered
   // Do NOT call dtLoad() here as it's async and would use stale data
-  function gv(id){ return (document.getElementById(id)||{}).value||''; }
+  function gv(id){ var el=document.getElementById(id); return el?(el.value!=null?el.value:''):''; }
+  function gvNum(id){ var el=document.getElementById(id); if(!el||el.value==='')return null; var v=parseFloat(el.value); return isNaN(v)?null:v; }
   var fAsset=gv('dtfAsset');
   var fResult=gv('dtfResult');
   var fDay=gv('dtfDay');
@@ -12503,9 +12504,9 @@ function dtFiltered(){
   var fMode=gv('dtfMode');
   var fClass=gv('dtfClass');
   var fModel=gv('dtfModel');
-  var fDur=parseFloat(gv('dtfDur'))||0;
-  var fRRMin=gv('dtfRRMin')!==''?parseFloat(gv('dtfRRMin')):null;
-  var fRRMax=gv('dtfRRMax')!==''?parseFloat(gv('dtfRRMax')):null;
+  var fDur=gvNum('dtfDur')||0;
+  var fRRMin=gvNum('dtfRRMin');
+  var fRRMax=gvNum('dtfRRMax');
   var fEntryTime=gv('dtfEntryTime'); // เช่น "06:01-09:00"
   var fCloseTime=gv('dtfCloseTime')||''; // Close Time filter
   var src=[];
@@ -12610,20 +12611,18 @@ function dtFiltered(){
     if(fClass&&(t.setupClass||'')!==fClass) return false;
     if(fModel&&(t.candle||t.model||'')!==fModel) return false;
     if(fDur){
-      // ใช้ timeInPos หรือ time_in_pos ซึ่งเป็น field จริงที่เก็บ duration
-      var durStr=t.timeInPos||t.time_in_pos||t.duration||'';
+      // Duration filter กรอง setupDuration (เวลาตั้งแต่วิเคราะห์จนถึง entry)
+      var durStr=t.setupDuration||t.setup_duration||'';
       var dm=0;
-      var dmh=durStr.match(/(\d+)h/);var dmm=durStr.match(/(\d+)m/);
+      var dmh=durStr.match(/(\d+)h/);var dmm2=durStr.match(/(\d+)m/);
       if(dmh) dm+=parseInt(dmh[1])*60;
-      if(dmm) dm+=parseInt(dmm[1]);
+      if(dmm2) dm+=parseInt(dmm2[1]);
       if(!dm){
-        // try "MM:SS" or pure minutes format
         var dms=durStr.match(/^(\d+):(\d{2})$/);
         if(dms) dm=parseInt(dms[1]);
         else { var dmn=parseFloat(durStr); if(dmn>0) dm=Math.round(dmn); }
       }
-      if(dm>0&&dm>fDur) return false;
-      if(!dm&&durStr) return false; // มี durStr แต่ parse ไม่ได้ → skip
+      if(dm>fDur) return false; // dm=0 (ไม่มีค่า) ผ่าน, dm>fDur ไม่ผ่าน
     }
     if(fEntryTime){
       // แปลง entryTime "HH:mm" → นาที เพื่อเปรียบเทียบ
@@ -12670,8 +12669,9 @@ function dtFiltered(){
     }
     // ── RR range filter ────────────────────────────────────────────
     if(fRRMin!==null||fRRMax!==null){
-      var tRR=parseFloat(t.rr||t.maxRR)||0;
-      if(!tRR) return false; // ถ้าไม่มี RR → ไม่ผ่านเมื่อ filter เปิด
+      // MaxRR คือค่าที่แสดงในตาราง เช่น "8.25", "35.5" — ใช้เป็น primary
+      var tRR=parseFloat(t.maxRR||t.rr)||0;
+      if(!tRR) return false; // ไม่มี MaxRR → ไม่ผ่านเมื่อ filter เปิด
       if(fRRMin!==null&&tRR<fRRMin) return false;
       if(fRRMax!==null&&tRR>fRRMax) return false;
     }
