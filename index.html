@@ -12608,14 +12608,22 @@ function dtFiltered(){
     if(fCode&&(t.code||'')!==fCode) return false;
     if(fMode&&(t.mode||'')!==fMode) return false;
     if(fClass&&(t.setupClass||'')!==fClass) return false;
-    if(fModel&&(t.model||'')!==fModel) return false;
+    if(fModel&&(t.candle||t.model||'')!==fModel) return false;
     if(fDur){
-      var durStr=t.duration||'';
-      var m=0;
-      var mh=durStr.match(/(\d+)h/);var mm=durStr.match(/(\d+)m/);
-      if(mh) m+=parseInt(mh[1])*60;
-      if(mm) m+=parseInt(mm[1]);
-      if(m>fDur) return false;
+      // ใช้ timeInPos หรือ time_in_pos ซึ่งเป็น field จริงที่เก็บ duration
+      var durStr=t.timeInPos||t.time_in_pos||t.duration||'';
+      var dm=0;
+      var dmh=durStr.match(/(\d+)h/);var dmm=durStr.match(/(\d+)m/);
+      if(dmh) dm+=parseInt(dmh[1])*60;
+      if(dmm) dm+=parseInt(dmm[1]);
+      if(!dm){
+        // try "MM:SS" or pure minutes format
+        var dms=durStr.match(/^(\d+):(\d{2})$/);
+        if(dms) dm=parseInt(dms[1]);
+        else { var dmn=parseFloat(durStr); if(dmn>0) dm=Math.round(dmn); }
+      }
+      if(dm>0&&dm>fDur) return false;
+      if(!dm&&durStr) return false; // มี durStr แต่ parse ไม่ได้ → skip
     }
     if(fEntryTime){
       // แปลง entryTime "HH:mm" → นาที เพื่อเปรียบเทียบ
@@ -12662,7 +12670,7 @@ function dtFiltered(){
     }
     // ── RR range filter ────────────────────────────────────────────
     if(fRRMin!==null||fRRMax!==null){
-      var tRR=parseFloat(t.rr)||0;
+      var tRR=parseFloat(t.rr||t.maxRR)||0;
       if(!tRR) return false; // ถ้าไม่มี RR → ไม่ผ่านเมื่อ filter เปิด
       if(fRRMin!==null&&tRR<fRRMin) return false;
       if(fRRMax!==null&&tRR>fRRMax) return false;
@@ -12898,7 +12906,7 @@ function dtUpdateFilterOpts(rows){
   var assets  = mergeOpts(rows.map(function(t){return t.asset;}),'dtfAsset');
   var codes   = mergeOpts(rows.map(function(t){return t.code;}),'dtfCode');
   var modes   = mergeOpts(rows.map(function(t){return t.mode;}),'dtfMode');
-  var models  = mergeOpts(rows.map(function(t){return t.model||t.candle;}),'dtfModel');
+  var models  = mergeOpts(rows.map(function(t){return t.candle||t.model||'';}),'dtfModel');
   var days    = mergeOpts(rows.map(function(t){return t.day;}),'dtfDay',function(a,b){return dayOrder.indexOf(a)-dayOrder.indexOf(b);});
   var results = mergeOpts(rows.map(function(t){return t.result;}),'dtfResult');
   var fibos   = mergeOpts(rows.map(function(t){return t.fiboLevel||'';}).filter(Boolean),'dtfFibo',function(a,b){return parseFloat(a)-parseFloat(b);});
