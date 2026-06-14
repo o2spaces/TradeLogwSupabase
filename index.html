@@ -12876,9 +12876,10 @@ function dtDeleteRow(visIdx){
   var targetId=t._id||t.id||'';
   console.log('[dtDeleteRow] visIdx='+visIdx+' targetId='+targetId+' dataset_id='+t.dataset_id+' portfolio='+t.portfolio);
   if(!targetId){showToast('❌ ไม่พบ ID ของ trade นี้','error');return;}
-  // ตรวจสอบว่าเป็น Data Mode trade จริงๆ (มี dataset_id)
-  var isDataTrade = !!(t.dataset_id && t.dataset_id !== '');
-  if(!isDataTrade){showToast('ลบได้เฉพาะออเดอร์ Data Mode (ไม่มี dataset_id)','error');return;}
+  // ตรวจสอบว่าเป็น Data Mode trade จริงๆ
+  // เช็คว่า _id นี้มีใน DT.trades (ซึ่ง load จาก data_trades table) หรือเปล่า
+  var existsInDT = DT.trades.some(function(x){ return (x._id||x.id)===targetId; });
+  if(!existsInDT){showToast('ลบได้เฉพาะออเดอร์ Data Mode','error');return;}
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
   _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
@@ -12904,9 +12905,11 @@ function dtDeleteRow(visIdx){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
+        console.log('[softDelete] uid='+uid+' targetId='+targetId);
         var res=await _supabase.from('data_trades').update({is_deleted:true,updated_at:new Date().toISOString()}).eq('user_id',uid).eq('id',targetId);
+        console.log('[softDelete] result=',res);
         if(res.error){console.error('[softDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // Force reload จาก Supabase — clear memory ก่อนเพื่อ bypass cache check
+        if(res.data!==null&&res.count===0){console.warn('[softDelete] 0 rows updated — id ไม่ตรง?');}
         DT.trades=[];
         await dtLoad(true);
         dtRender();
@@ -12928,9 +12931,10 @@ function dtDeleteRow(visIdx){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
+        console.log('[hardDelete] uid='+uid+' targetId='+targetId);
         var res=await _supabase.from('data_trades').delete().eq('user_id',uid).eq('id',targetId);
+        console.log('[hardDelete] result=',res);
         if(res.error){console.error('[hardDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // Force reload จาก Supabase — clear memory ก่อนเพื่อ bypass cache check
         DT.trades=[];
         await dtLoad(true);
         dtRender();
