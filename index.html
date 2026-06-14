@@ -12872,10 +12872,13 @@ function dtRestoreFilters(){
 function dtDeleteRow(visIdx){
   var rows=dtFiltered();
   var t=rows[visIdx];
-  if(!t||t._src!=='data'){showToast('ลบได้เฉพาะออเดอร์ Data Mode','error');return;}
+  if(!t){showToast('ไม่พบ trade','error');return;}
   var targetId=t._id||t.id||'';
-  console.log('[dtDeleteRow] visIdx='+visIdx+' targetId='+targetId+' t=',t);
+  console.log('[dtDeleteRow] visIdx='+visIdx+' targetId='+targetId+' dataset_id='+t.dataset_id+' portfolio='+t.portfolio);
   if(!targetId){showToast('❌ ไม่พบ ID ของ trade นี้','error');return;}
+  // ตรวจสอบว่าเป็น Data Mode trade จริงๆ (มี dataset_id)
+  var isDataTrade = !!(t.dataset_id && t.dataset_id !== '');
+  if(!isDataTrade){showToast('ลบได้เฉพาะออเดอร์ Data Mode (ไม่มี dataset_id)','error');return;}
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
   _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
