@@ -12905,13 +12905,10 @@ function dtDeleteRow(visIdx){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
-        console.log('[softDelete] uid='+uid+' targetId='+targetId);
         var res=await _supabase.from('data_trades').update({is_deleted:true,updated_at:new Date().toISOString()}).eq('user_id',uid).eq('id',targetId);
-        console.log('[softDelete] result=',res);
         if(res.error){console.error('[softDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        if(res.data!==null&&res.count===0){console.warn('[softDelete] 0 rows updated — id ไม่ตรง?');}
-        DT.trades=[];
-        await dtLoad(true);
+        // ลบออกจาก memory โดยตรง ไม่ต้อง reload ทั้งหมด
+        DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==targetId;});
         dtRender();
         showToast('🙈 ซ่อน Trade แล้ว','success');
       })();
@@ -12931,12 +12928,10 @@ function dtDeleteRow(visIdx){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
-        console.log('[hardDelete] uid='+uid+' targetId='+targetId);
         var res=await _supabase.from('data_trades').delete().eq('user_id',uid).eq('id',targetId);
-        console.log('[hardDelete] result=',res);
         if(res.error){console.error('[hardDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        DT.trades=[];
-        await dtLoad(true);
+        // ลบออกจาก memory โดยตรง ไม่ต้อง reload ทั้งหมด
+        DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==targetId;});
         dtRender();
         showToast('💥 ลบถาวรแล้ว','success');
       })();
