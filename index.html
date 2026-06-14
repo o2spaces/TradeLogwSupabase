@@ -11258,7 +11258,7 @@ async function dtLoad(forceReload){
       }
     }catch(e){console.warn('[dtLoad supabase]',e.message);}
   }
-  if(_supabase && DT.trades && DT.trades.length) return; // memory มีข้อมูลแล้ว → ข้าม
+  if(!forceReload && _supabase && DT.trades && DT.trades.length) return; // memory มีข้อมูลแล้ว → ข้าม (เว้นแต่ forceReload)
   try{
     var raw=lsGet('dt_trades');
     DT.trades=raw?JSON.parse(raw):[];
@@ -12873,8 +12873,9 @@ function dtDeleteRow(visIdx){
   var rows=dtFiltered();
   var t=rows[visIdx];
   if(!t||t._src!=='data'){showToast('ลบได้เฉพาะออเดอร์ Data Mode','error');return;}
-  // ── FIX: capture _id ก่อน dtLoad เพื่อป้องกัน index shift ──
-  var targetId=t._id;
+  var targetId=t._id||t.id||'';
+  console.log('[dtDeleteRow] visIdx='+visIdx+' targetId='+targetId+' t=',t);
+  if(!targetId){showToast('❌ ไม่พบ ID ของ trade นี้','error');return;}
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
   _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
@@ -12902,9 +12903,11 @@ function dtDeleteRow(visIdx){
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
         var res=await _supabase.from('data_trades').update({is_deleted:true,updated_at:new Date().toISOString()}).eq('user_id',uid).eq('id',targetId);
         if(res.error){console.error('[softDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // Force reload จาก Supabase เพื่อ sync ข้อมูลล่าสุด
+        // Force reload จาก Supabase — clear memory ก่อนเพื่อ bypass cache check
         DT.trades=[];
-        await dtLoad(true); dtRender();
+        await dtLoad(true);
+        dtRender();
+        showToast('🙈 ซ่อน Trade แล้ว','success');
       })();
     }
   };
@@ -12924,9 +12927,11 @@ function dtDeleteRow(visIdx){
         if(!uid){showToast('❌ ไม่พบ user session','error');return;}
         var res=await _supabase.from('data_trades').delete().eq('user_id',uid).eq('id',targetId);
         if(res.error){console.error('[hardDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // Force reload จาก Supabase เพื่อ sync ข้อมูลล่าสุด
+        // Force reload จาก Supabase — clear memory ก่อนเพื่อ bypass cache check
         DT.trades=[];
-        await dtLoad(true); dtRender();
+        await dtLoad(true);
+        dtRender();
+        showToast('💥 ลบถาวรแล้ว','success');
       })();
     }
   };
