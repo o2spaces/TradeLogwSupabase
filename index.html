@@ -12899,45 +12899,41 @@ function dtDeleteRow(visIdx){
   _delOverlay.querySelector('#_delCancel').onclick=function(){ _delOverlay.remove(); };
   _delOverlay.querySelector('#_delSoft').onclick=function(){
     _delOverlay.remove();
-    var realIdx=DT.trades.findIndex(function(x){return x._id===targetId;});
-    if(realIdx>=0){ DT.trades[realIdx]._deleted=true; DT.trades[realIdx]._softDeleted=true; DT.trades[realIdx].is_deleted=true; }
-    dtSave(); dtRender(); showToast('🙈 ซ่อน Trade แล้ว (Soft Delete)','success');
-    if(_supabase && targetId){
-      (async function(){
+    var tid=targetId;
+    (async function(){
+      // 1. Soft delete ใน Supabase ก่อน
+      if(_supabase && tid){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
-        if(!uid){showToast('❌ ไม่พบ user session','error');return;}
-        var res=await _supabase.from('data_trades').update({is_deleted:true,updated_at:new Date().toISOString()}).eq('user_id',uid).eq('id',targetId);
-        if(res.error){console.error('[softDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // ลบออกจาก memory โดยตรง ไม่ต้อง reload ทั้งหมด
-        DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==targetId;});
-        dtRender();
-        showToast('🙈 ซ่อน Trade แล้ว','success');
-      })();
-    }
+        if(uid){
+          var res=await _supabase.from('data_trades').update({is_deleted:true,updated_at:new Date().toISOString()}).eq('user_id',uid).eq('id',tid);
+          if(res.error){console.error('[softDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
+        }
+      }
+      // 2. ลบออกจาก DT.trades memory
+      DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==tid;});
+      dtSave(); dtRender();
+      showToast('🙈 ซ่อน Trade แล้ว','success');
+    })();
   };
   _delOverlay.querySelector('#_delHard').onclick=function(){
     _delOverlay.remove();
-    var realIdx=DT.trades.findIndex(function(x){return x._id===targetId;});
-    if(realIdx>=0) DT.trades.splice(realIdx,1);
-    else {
-      var ri2=DT.trades.findIndex(function(x){return (x.id||x._id)===targetId;});
-      if(ri2>=0) DT.trades.splice(ri2,1);
-    }
-    dtSave(); dtRender(); showToast('💥 ลบถาวรแล้ว','success');
-    if(_supabase && targetId){
-      (async function(){
+    var tid=targetId; // capture ก่อน async
+    (async function(){
+      // 1. ลบจาก Supabase ก่อน
+      if(_supabase && tid){
         var uid=_authSession&&_authSession._sbUserId;
         if(!uid){var ss=await _supabase.auth.getSession();uid=ss.data&&ss.data.session&&ss.data.session.user&&ss.data.session.user.id;}
-        if(!uid){showToast('❌ ไม่พบ user session','error');return;}
-        var res=await _supabase.from('data_trades').delete().eq('user_id',uid).eq('id',targetId);
-        if(res.error){console.error('[hardDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
-        // ลบออกจาก memory โดยตรง ไม่ต้อง reload ทั้งหมด
-        DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==targetId;});
-        dtRender();
-        showToast('💥 ลบถาวรแล้ว','success');
-      })();
-    }
+        if(uid){
+          var res=await _supabase.from('data_trades').delete().eq('user_id',uid).eq('id',tid);
+          if(res.error){console.error('[hardDelete]',res.error);showToast('❌ '+res.error.message,'error');return;}
+        }
+      }
+      // 2. ลบออกจาก DT.trades memory (match ด้วยทั้ง _id และ id)
+      DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==tid;});
+      dtSave(); dtRender();
+      showToast('💥 ลบถาวรแล้ว','success');
+    })();
   };
 }
 
