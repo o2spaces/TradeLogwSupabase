@@ -12912,7 +12912,10 @@ function dtDeleteRow(visIdx){
       }
       // 2. ลบออกจาก DT.trades memory
       DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==tid;});
-      dtSave(); dtRender();
+      dtSave();
+      window._dtUpdatingOpts=false; // reset guard ก่อน render
+      window._dtCurrentPage=0;      // reset pagination
+      dtRender();
       showToast('🙈 ซ่อน Trade แล้ว','success');
     })();
   };
@@ -12931,7 +12934,10 @@ function dtDeleteRow(visIdx){
       }
       // 2. ลบออกจาก DT.trades memory (match ด้วยทั้ง _id และ id)
       DT.trades=DT.trades.filter(function(x){return (x._id||x.id)!==tid;});
-      dtSave(); dtRender();
+      dtSave();
+      window._dtUpdatingOpts=false; // reset guard ก่อน render
+      window._dtCurrentPage=0;      // reset pagination
+      dtRender();
       showToast('💥 ลบถาวรแล้ว','success');
     })();
   };
