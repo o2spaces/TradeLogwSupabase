@@ -12754,7 +12754,7 @@ function dtRender(){
       +'<td style="padding:6px;text-align:right;font-family:var(--font-mono);font-size:11px;font-weight:700;color:'+(t.rr?(t.rr>=2?'var(--green)':t.rr>=1?'var(--amber)':'var(--red)'):'var(--text-muted)')+'">'+(t.rr?'1:'+parseFloat(t.rr).toFixed(2):'-')+'</td>'
       +'<td style="padding:6px;text-align:center;">'+imgBtn+'</td>'
       +'<td style="padding:6px;text-align:center;"><button onclick="dtOpenEdit('+absIdx+')" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:10px;transition:all .1s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-muted)\'">✎</button>'
-      +(t._src!=='port'?' <button onclick="dtDeleteRow('+absIdx+')" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:10px;transition:all .1s;" onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-muted)\'">✕</button>':'')+'</td>'
+      +(t._src!=='port'?' <button onclick="dtDeleteById(\''+(t._id||t.id)+'\',this)" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:10px;transition:all .1s;" onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.color=\'var(--text-muted)\'">✕</button>':'')+'</td>'
       +'</tr>';
   }).join('');
 
@@ -12869,19 +12869,28 @@ function dtRestoreFilters(){
   }catch(e){}
 }
 
+function dtDeleteById(tid, btnEl){
+  // Find trade by id directly — ไม่ใช้ index เพื่อหลีกเลี่ยง index shift
+  var t = DT.trades.find(function(x){ return (x._id||x.id)===tid; });
+  if(!t){ showToast('⚠️ ไม่พบ trade นี้','error'); return; }
+  _dtShowDeleteDialog(tid, t, btnEl);
+}
+function dtDeleteById(tid){
+  // เรียกจาก X button โดยตรง ใช้ id แทน index — ป้องกัน index shift
+  _dtShowDeleteDialog(tid);
+}
 function dtDeleteRow(visIdx){
+  // legacy — ยังคงไว้เพื่อ backward compat
   var rows=dtFiltered();
   var t=rows[visIdx];
   if(!t){showToast('ไม่พบ trade','error');return;}
-  var targetId=t._id||t.id||'';
+  _dtShowDeleteDialog(t._id||t.id||'');
+}
+function _dtShowDeleteDialog(targetId){
   if(!targetId){showToast('❌ ไม่พบ ID ของ trade นี้','error');return;}
-  // ตรวจสอบว่ามีใน DT.trades
-  var existsInDT = Array.isArray(DT.trades) && DT.trades.some(function(x){ return (x._id||x.id)===targetId; });
-  var sTrades = (window.S && Array.isArray(S.trades)) ? S.trades : [];
-  var existsInS  = sTrades.some(function(x){ return (x._id||x.id)===targetId; });
-  console.log('[DELETE] _src='+t._src+' targetId='+targetId+' inDT='+existsInDT+' inS='+existsInS);
-  if(!existsInDT && existsInS){showToast('⚠️ Trade นี้เป็น Journal trade — ลบได้ที่ Journal Mode','error');return;}
-  if(!existsInDT){showToast('⚠️ ไม่พบ trade นี้ใน Data Mode','error');return;}
+  // ดึง trade object จาก DT.trades โดยตรง (ไม่ใช้ index)
+  var t=DT.trades.find(function(x){return (x._id||x.id)===targetId;});
+  if(!t){showToast('⚠️ ไม่พบ trade นี้ใน Data Mode','error');return;}
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
   _delOverlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
