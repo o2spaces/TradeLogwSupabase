@@ -12874,12 +12874,13 @@ function dtDeleteRow(visIdx){
   var t=rows[visIdx];
   if(!t){showToast('ไม่พบ trade','error');return;}
   var targetId=t._id||t.id||'';
-  console.log('[DELETE] _src='+t._src+' targetId='+targetId+' inDT='+DT.trades.some(function(x){return (x._id||x.id)===targetId;})+' inS='+S.trades.some(function(x){return (x._id||x.id)===targetId;}));
   if(!targetId){showToast('❌ ไม่พบ ID ของ trade นี้','error');return;}
-  // ตรวจสอบว่ามีใน DT.trades จริง (ไม่ check _src เพราะ combined mode ทำให้ _src ผิด)
-  var existsInDT = DT.trades.some(function(x){ return (x._id||x.id)===targetId; });
-  var existsInS  = (window.S&&S.trades||[]).some(function(x){ return (x._id||x.id)===targetId; });
-  if(!existsInDT && existsInS){showToast('⚠️ Trade นี้เป็น Journal trade — ลบได้ที่ Journal Mode เท่านั้น','error');return;}
+  // ตรวจสอบว่ามีใน DT.trades
+  var existsInDT = Array.isArray(DT.trades) && DT.trades.some(function(x){ return (x._id||x.id)===targetId; });
+  var sTrades = (window.S && Array.isArray(S.trades)) ? S.trades : [];
+  var existsInS  = sTrades.some(function(x){ return (x._id||x.id)===targetId; });
+  console.log('[DELETE] _src='+t._src+' targetId='+targetId+' inDT='+existsInDT+' inS='+existsInS);
+  if(!existsInDT && existsInS){showToast('⚠️ Trade นี้เป็น Journal trade — ลบได้ที่ Journal Mode','error');return;}
   if(!existsInDT){showToast('⚠️ ไม่พบ trade นี้ใน Data Mode','error');return;}
   // Show delete dialog: Soft Delete vs Hard Delete
   var _delOverlay=document.createElement('div');
