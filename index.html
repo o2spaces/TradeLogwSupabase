@@ -7744,20 +7744,19 @@ function parseFundedTopstep(text){
     var dateKey=enteredAt?enteredAt.substring(0,10):'';
     var pnl=parseFloat(col(parts,'PnL'))||0;
     var fees=parseFloat(col(parts,'Fees'))||0;
-    var netPnl=pnl-fees;
+    var commissions=parseFloat(col(parts,'Commissions'))||0;
+    var netPnl=pnl-fees-commissions;
     var exitPrice=col(parts,'ExitPrice');
     var entryPrice=col(parts,'EntryPrice');
     var asset=contractName.replace(/M\d+$/,'1');
     var lots=parseFloat(col(parts,'Size')||'1')||1;
-    var tsCommRate=COMM[asset]||0;
-    var tsComm=(lots*tsCommRate).toFixed(2);
     var trade={
       asset:asset,side:col(parts,'Type')||'Long',lots:col(parts,'Size')||'1',
       entry:entryPrice?parseFloat(entryPrice).toFixed(2):'',
       close:exitPrice?parseFloat(exitPrice).toFixed(2):'',
       tp:netPnl>=0?(exitPrice?parseFloat(exitPrice).toFixed(2):''):'',
       sl:netPnl<0?(exitPrice?parseFloat(exitPrice).toFixed(2):''):'',
-      pnl:netPnl.toFixed(2),fees:fees.toFixed(2),commission:tsComm,
+      pnl:netPnl.toFixed(2),fees:fees.toFixed(2),commission:commissions.toFixed(2),
       result:netPnl>0?'Win':netPnl<0?'Loss':'BE',
       entryDate:enteredAt,closeDate:exitedAt,
       timeInPos:_formatFundedDur(col(parts,'TradeDuration')),
@@ -8042,6 +8041,11 @@ function _showFundedPreview(skipped, openPositions){
 function confirmFundedImport(){
   if(_isReadOnly){showToast('🔒 โหมดดูเท่านั้น — ไม่สามารถแก้ไขได้','error');return;}
   if(!_fundedImportData.length){showToast('ไม่มีข้อมูลให้ import','error');return;}
+  // resolve broker label for toast
+  var _brokerLabels={topstep:'Topstep',apex_rith:'Apex (Rithmic)',apex_trad:'Apex (Tradovate)',lucid_rith:'Lucid (Rithmic)',lucid_trad:'Lucid (Tradovate)'};
+  var lbl=_brokerLabels[_fundedBroker]||_fundedBroker||'Funded';
+  // snapshot currentPortfolio at import time (covers new-portfolio edge case)
+  var targetPort=S.currentPortfolio||'default';
   var count=0;var batchTrades=[];
   _fundedImportData.forEach(function(t){
     var dk=t._dateKey;if(!dk)return;
@@ -8056,18 +8060,18 @@ function confirmFundedImport(){
     var p=ts.reduce(function(s,r){return s+(parseFloat(r.pnl)||0);},0);
     var w=ts.filter(function(r){return parseFloat(r.pnl)>0;}).length;
     S.sessions[dk].netPnl=p;S.sessions[dk].trades=ts.length;S.sessions[dk].wins=w;
-    batchTrades.push(Object.assign({date:dk,portfolio:S.currentPortfolio},obj));
+    batchTrades.push(Object.assign({date:dk,portfolio:targetPort},obj));
     count++;
   });
   persistPort();
-  if(window._dtPortCache) delete _dtPortCache[S.currentPortfolio]; // invalidate stale cache
+  if(window._dtPortCache) delete _dtPortCache[targetPort]; // invalidate stale cache
   updateStats();renderCal();updateRecent();renderTodayOrders();
   if(typeof renderWeekly==='function') renderWeekly();
   if(typeof drawEQ==='function') drawEQ();
   if(typeof drawEQW==='function') setTimeout(drawEQW,100);
   showToast('✅ Import '+count+' trades จาก '+lbl+' แล้ว','success');
   _fundedImportData=[];
-  if(_supabase&&batchTrades.length)sendSheet('batchSaveTrades',{trades:batchTrades});
+  if(_supabase&&batchTrades.length)sendSheet('batchSaveTrades',{portfolio:targetPort,trades:batchTrades});
 }
 
 // ── backward compat ──────────────────────────────────────────────────────
