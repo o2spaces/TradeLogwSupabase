@@ -3886,29 +3886,13 @@ function renderWeekly(){
 function chYear(d){S.viewYear+=d;renderWeekly();}
 
 function _getTradesByDate(dateKey){
-  // รวม trades จาก currentPortfolio (S.trades) + port อื่นๆ ใน _dtPortCache
-  var base = (S.trades[dateKey] || []).slice();
-  if(window._dtPortCache){
-    Object.keys(_dtPortCache).forEach(function(pid){
-      if(pid === S.currentPortfolio) return; // ไม่นับซ้ำ
-      var portTrades = (_dtPortCache[pid] || {})[dateKey] || [];
-      base = base.concat(portTrades);
-    });
-  }
-  return base;
+  // เฉพาะ currentPortfolio เท่านั้น (ไม่รวมพอร์ตอื่นจาก _dtPortCache)
+  return (S.trades[dateKey] || []).slice();
 }
 function allTrades(){
-  // รวม trades ทุกวันจาก currentPortfolio + _dtPortCache ของ port อื่น
+  // เฉพาะ currentPortfolio เท่านั้น (ไม่รวมพอร์ตอื่นจาก _dtPortCache)
   var a = [];
-  var allDates = new Set(Object.keys(S.trades));
-  if(window._dtPortCache){
-    Object.keys(_dtPortCache).forEach(function(pid){
-      if(pid !== S.currentPortfolio){
-        Object.keys(_dtPortCache[pid] || {}).forEach(function(d){ allDates.add(d); });
-      }
-    });
-  }
-  allDates.forEach(function(k){ a = a.concat(_getTradesByDate(k)); });
+  Object.keys(S.trades).forEach(function(k){ a = a.concat(_getTradesByDate(k)); });
   return a;
 }
 function calcSt(trades){
@@ -3924,17 +3908,8 @@ function calcSt(trades){
   var gl=Math.abs(losses.reduce(function(s,t){return s+parseFloat(t.pnl);},0));
   var avgW=wins.length?gp/wins.length:0,avgL=losses.length?gl/losses.length:0;
   var pf=gl>0?gp/gl:0;
-  // FIX: นับ trading days จากทุก portfolio รวม _dtPortCache
+  // เฉพาะ currentPortfolio เท่านั้น
   var allDates=new Set(Object.keys(S.trades).filter(function(k){return (S.trades[k]||[]).length>0;}));
-  if(window._dtPortCache){
-    Object.keys(_dtPortCache).forEach(function(pid){
-      if(pid!==S.currentPortfolio){
-        Object.keys(_dtPortCache[pid]||{}).forEach(function(d){
-          if((_dtPortCache[pid][d]||[]).length>0) allDates.add(d);
-        });
-      }
-    });
-  }
   var days=allDates.size;
   var longs=trades.filter(function(t){return t.side==='Long';}).length;
   var cum=0,peak=0,dd=0;trades.forEach(function(t){cum+=(parseFloat(t.pnl)||0);if(cum>peak)peak=cum;if(peak-cum>dd)dd=peak-cum;});
@@ -3957,10 +3932,9 @@ function updateStats(){
   sv('d-wr',wr+'%','');sv('d-avgw','$'+st.avgW.toFixed(2),'pos');sv('d-avgl','$'+st.avgL.toFixed(2),'neg');sv('d-pf',st.pf>0?st.pf.toFixed(2):'-','');
   sv('d-total',st.total,'neu');sv('d-wins',st.wins,'pos');sv('d-losses',st.losses,'neg');sv('d-days',st.days,'neu');
   var lp=st.total?Math.round(st.longs/st.total*100):0;sv('d-long',lp+'%','pos');sv('d-short',(100-lp)+'%','neg');
-  // FIX: best/worst day รวมทุก portfolio
+  // best/worst day เฉพาะ currentPortfolio
   var dp={};
   var allDateKeys=new Set(Object.keys(S.trades));
-  if(window._dtPortCache) Object.keys(_dtPortCache).forEach(function(pid){Object.keys(_dtPortCache[pid]||{}).forEach(function(d){allDateKeys.add(d);});});
   allDateKeys.forEach(function(k){var p=_getTradesByDate(k).reduce(function(s,t){return s+(parseFloat(t.pnl)||0);},0);if(p)dp[k]=p;});
   var vals=Object.values(dp);if(vals.length){sv('d-best','$'+Math.max.apply(null,vals).toFixed(2),'pos');sv('d-worst','$'+Math.min.apply(null,vals).toFixed(2),'neg');}
   sv('w-gp','$'+st.gp.toFixed(2),'pos');sv('w-gl','$'+st.gl.toFixed(2),'neg');
@@ -4020,17 +3994,8 @@ function drawEQW(){
 
 function updateRecent(){
   var el=document.getElementById('recentList');
-  // รวม keys จาก S.sessions (currentPort) + _dtPortCache (port อื่น)
+  // เฉพาะ currentPortfolio เท่านั้น
   var keySet = new Set(Object.keys(S.sessions));
-  if(window._dtPortCache){
-    Object.keys(_dtPortCache).forEach(function(pid){
-      if(pid!==S.currentPortfolio){
-        Object.keys(_dtPortCache[pid]||{}).forEach(function(d){
-          if((_dtPortCache[pid][d]||[]).length>0) keySet.add(d);
-        });
-      }
-    });
-  }
   var keys=Array.from(keySet).sort().reverse().slice(0,5);
   if(!keys.length){el.innerHTML='<div style="font-size:11px;color:var(--text-muted);padding:4px 3px;">ยังไม่มีข้อมูล</div>';return;}
   el.innerHTML=keys.map(function(k){
