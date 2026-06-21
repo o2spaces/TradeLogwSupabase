@@ -12490,7 +12490,16 @@ function dtFiltered(){
       else if(r===fResult) match=true;
       if(!match) return false;
     }
-    if(fDay&&(t.day||'')!==fDay) return false;
+    if(fDay){
+      var _tDay=t.day||'';
+      if(!_tDay){
+        var _dsrc=t.date||(t.entryDate?t.entryDate.substring(0,10):'')||(t.entryDateRaw?t.entryDateRaw.substring(0,10):'');
+        if(_dsrc){
+          try{ _tDay=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(_dsrc+'T12:00').getDay()]||''; }catch(e){}
+        }
+      }
+      if(_tDay!==fDay) return false;
+    }
     if(fSession){
       // Session อาจคาบเกี่ยว เช่น "tokyo, sydney" → ให้ match ถ้ามี session ที่เลือกอยู่ใน string
       var tSess=(t.session||'').toLowerCase();
@@ -12499,7 +12508,7 @@ function dtFiltered(){
     if(fCode&&(t.code||'')!==fCode) return false;
     if(fMode&&(t.mode||'')!==fMode) return false;
     if(fClass&&(t.setupClass||'')!==fClass) return false;
-    if(fModel&&(t.model||'')!==fModel) return false;
+    if(fModel&&((t.model||t.candle)||'')!==fModel) return false;
     if(fDur){
       var durStr=t.duration||'';
       var m=0;
