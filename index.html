@@ -13885,9 +13885,18 @@ function dtRenderCharts(rows){
   var dayOrder=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   function groupByDay(){
     var g={};
+    var dayMap=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     dayOrder.forEach(function(d){g[d]={pnl:0,count:0,wins:0};});
     rows.forEach(function(t){
-      var k=t.day||'-';
+      var k=t.day||'';
+      // Fallback: คำนวณ day จาก date/entryDate ถ้า t.day ไม่มีค่า (เช่น trades ที่ import มาจาก Topstep)
+      if(!k){
+        var dsrc=t.date||(t.entryDate?t.entryDate.substring(0,10):'')||(t.entryDateRaw?t.entryDateRaw.substring(0,10):'');
+        if(dsrc){
+          try{ k=dayMap[new Date(dsrc+'T12:00').getDay()]||''; }catch(e){}
+        }
+      }
+      if(!k) k='-';
       if(!g[k]) g[k]={pnl:0,count:0,wins:0};
       g[k].pnl+=parseFloat(t.pnl)||0;
       g[k].count++;
