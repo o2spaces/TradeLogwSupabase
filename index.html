@@ -5444,10 +5444,15 @@ async function doScan(){
 
   try{
     var res=await callVision(prompt,S.upB64);
-    var clean=res.replace(/```json|```/g,'').trim();
-    var jsonMatch=clean.match(/\{[\s\S]*\}/);
-    if(jsonMatch) clean=jsonMatch[0];
-    var d=JSON.parse(clean);
+    var d;
+    try{
+      d=_parseAIJson(res);
+    }catch(parseErr){
+      // ลอง scan ใหม่อีกครั้ง (รอบเดียว) เผื่อ AI ตอบ JSON เพี้ยนแค่ครั้งนี้
+      box.innerHTML='<span style="color:var(--amber);">⚠ AI ตอบรูปแบบไม่ถูกต้อง กำลังลองใหม่อีกครั้ง...</span>';
+      var res2=await callVision(prompt,S.upB64);
+      d=_parseAIJson(res2); // ถ้ายังพังอีก จะ throw ออกไปที่ catch ข้างนอกตามปกติ
+    }
 
     var ASSETS=['MNQ1','NQ1','MGC1','GC1','ES1','MES1','XAU/USD','EURUSD','GBPUSD','USDJPY','BTCUSD'];
     var filled=[];
@@ -5551,16 +5556,12 @@ async function doScan(){
       ].join('\n');
       try{
         var res2=await callVision(closePrompt,S.upB64);
-        var c2=res2.replace(/```json|```/g,'').trim();
-        var jm2=c2.match(/\{[\s\S]*\}/);
-        if(jm2){
-          var d2=JSON.parse(jm2[0]);
-          if(d2.close_datetime&&d2.close_datetime!==''){
-            var cdt2=d2.close_datetime.substring(0,16);
-            document.getElementById('oCloseDate').value=cdt2;
-            filled.push({k:'Close Time',v:cdt2.replace('T',' ')});
-            calcTimeInPos();
-          }
+        var d2=_parseAIJson(res2);
+        if(d2.close_datetime&&d2.close_datetime!==''){
+          var cdt2=d2.close_datetime.substring(0,16);
+          document.getElementById('oCloseDate').value=cdt2;
+          filled.push({k:'Close Time',v:cdt2.replace('T',' ')});
+          calcTimeInPos();
         }
       }catch(e2){console.warn('Close time retry failed:',e2);}
     }
@@ -5652,6 +5653,33 @@ async function callWithProv(prov,type,sys,user,b64){
     if(prov==='groq'){var mo=S.keys['mGroq']||'llama-3.3-70b-versatile';var r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:mo,max_tokens:1200,messages:[{role:'system',content:sys},{role:'user',content:user}]})});var d=await r.json();if(d.error)throw new Error(d.error.message||JSON.stringify(d.error));return d.choices[0].message.content;}
     if(prov==='ollama'){var base=S.keys['ollama']||'http://localhost:11434';var mo=S.keys['mOlla']||'llama3.2';var r=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:mo,stream:false,messages:[{role:'system',content:sys},{role:'user',content:user}]})});var d=await r.json();if(d.error)throw new Error(d.error);return d.message.content;}
     var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:S.keys['mAnt']||'claude-sonnet-4-5',max_tokens:1200,system:sys,messages:[{role:'user',content:user}]})});var d=await r.json();if(d.error)throw new Error(d.error.message);return d.content[0].text;
+  }
+}
+// ── ซ่อม JSON ที่ AI (โดยเฉพาะ Groq/llama รุ่นเล็ก) มักตอบมาผิด syntax ──
+function _repairJSON(str){
+  var s=str;
+  s=s.replace(/[“”]/g,'"').replace(/[‘’]/g,"'"); // smart quotes → ปกติ
+  s=s.replace(/'([^']*)'\s*:/g,function(m,p){return '"'+p+'":';}); // 'key': → "key":
+  s=s.replace(/:\s*'([^']*)'/g,function(m,p){return ':"'+p.replace(/"/g,'\\"')+'"';}); // :'val' → :"val"
+  s=s.replace(/,\s*([}\]])/g,'$1'); // ตัด trailing comma ก่อนปิด } หรือ ]
+  s=s.replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'); // เติม quote ให้ key ที่ไม่มี quote
+  s=s.replace(/"\s+"(\w+)"\s*:/g,'","$1":'); // เติม comma ที่ขาดระหว่าง "val" "key":
+  s=s.replace(/\n/g,' ').replace(/\t/g,' '); // ตัด newline/tab ดิบในตัว string ที่ทำให้ parse พัง
+  return s;
+}
+// พยายาม parse JSON จาก AI response; ถ้าพังให้ลองซ่อมก่อน throw error ที่อ่านง่ายขึ้น
+function _parseAIJson(raw){
+  var clean=(raw||'').replace(/```json|```/g,'').trim();
+  var m=clean.match(/\{[\s\S]*\}/);
+  if(m) clean=m[0];
+  try{
+    return JSON.parse(clean);
+  }catch(e1){
+    try{
+      return JSON.parse(_repairJSON(clean));
+    }catch(e2){
+      throw new Error('AI ตอบกลับมาไม่ใช่ JSON ที่ถูกต้อง ลองสแกนใหม่อีกครั้ง (รายละเอียด: '+e1.message+')');
+    }
   }
 }
 async function callVision(prompt,b64){
@@ -11586,10 +11614,15 @@ async function dtDoScan(){
   ].join('\n');
   try{
     var text=await callVision(prompt, DT._upB64);
-    var match=text.match(/\{[\s\S]*\}/);
-    if(match){
-      var d=JSON.parse(match[0]);
-      var filled=[];
+    var d;
+    try{
+      d=_parseAIJson(text);
+    }catch(parseErr){
+      if(res){res.innerHTML='<span style="color:var(--amber);">⚠ AI ตอบรูปแบบไม่ถูกต้อง กำลังลองใหม่อีกครั้ง...</span>';}
+      var text2=await callVision(prompt, DT._upB64);
+      d=_parseAIJson(text2); // ถ้ายังพังอีก จะ throw ออกไปที่ catch ข้างนอกตามปกติ
+    }
+    var filled=[];
       // Asset
       if(d.asset&&document.getElementById('dtAsset')){
         var sel=document.getElementById('dtAsset');
@@ -11668,15 +11701,12 @@ async function dtDoScan(){
         ].join('\n');
         try{
           var text2=await callVision(closePrompt2, DT._upB64);
-          var m2=text2.match(/\{[\s\S]*\}/);
-          if(m2){
-            var d2=JSON.parse(m2[0]);
-            if(d2.close_datetime&&d2.close_datetime.length>=16){
-              var cdt2=d2.close_datetime.substring(0,16);
-              document.getElementById('dtCloseDate').value=cdt2;
-              if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
-              filled.push({k:'Close Time',v:cdt2.replace('T',' ')});
-            }
+          var d2=_parseAIJson(text2);
+          if(d2.close_datetime&&d2.close_datetime.length>=16){
+            var cdt2=d2.close_datetime.substring(0,16);
+            document.getElementById('dtCloseDate').value=cdt2;
+            if(typeof dtCalcTimeInPos==='function') dtCalcTimeInPos();
+            filled.push({k:'Close Time',v:cdt2.replace('T',' ')});
           }
         }catch(e2){console.warn('dtDoScan close retry failed:',e2);}
       }
@@ -11692,9 +11722,6 @@ async function dtDoScan(){
         +'<div style="display:flex;flex-wrap:wrap;gap:4px;line-height:1.8;">'+pills+'</div>';
       window._lastDtScannedImg = _curDtImg;
     showToast('✅ AI สแกน '+filled.length+' ช่องสำเร็จ','success');
-    } else {
-      if(res) res.innerHTML='<span style="color:var(--amber);">⚠ ไม่พบข้อมูล trade ในรูป</span>';
-    }
   }catch(e){if(res) res.innerHTML='<span style="color:var(--red);">❌ Error: '+e.message+'</span>';}
   if(btn){btn.disabled=false;btn.textContent='🤖 Scan with AI';}
 }
