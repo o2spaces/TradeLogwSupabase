@@ -4511,8 +4511,11 @@ function calcPnl(){
     }
   }
 
-  // Always sync side from entry/sl before calculating
-  if(en&&sl){ setSide(en>sl?'Long':'Short'); }
+  // หมายเหตุ: เคยมี auto-sync side จาก Entry vs SL ตรงนี้ แต่ถูกถอดออก
+  // เพราะมันจะ override Side ที่ผู้ใช้ตั้งใจเลือกไว้ทุกครั้งที่ calcPnl() รัน
+  // ถ้า SL ถูกป้อนผิดด้านกับ Side ที่ตั้งใจไว้ จะทำให้ Side สลับโดยไม่ตั้งใจ
+  // และสูตร PnL ที่ขึ้นกับ S.side คำนวณผิดเครื่องหมายไปด้วย
+  // Side ควรเปลี่ยนเฉพาะตอนผู้ใช้กดปุ่ม Long/Short เอง (ผ่าน setSide) เท่านั้น
 
   // Auto-calc fees/comm if not manually overridden
   if(asset&&lots){
@@ -11455,11 +11458,12 @@ function dtCalcAll(){
     tpPtsEl.innerHTML='<span style="color:var(--green)">'+_tpPtsStr+' pts</span> <span style="color:var(--text-muted);font-size:9px;">/</span> <span style="color:var(--teal)">'+_tpTicksStr+' ticks</span>';
   } else if(tpPtsEl) tpPtsEl.textContent='';
 
-  // Auto-detect side from Entry vs TP
-  if(entry&&tp){
-    var s=tp>entry?'Long':'Short';
-    if(s!==DT.side) dtSetSide(s);
-  }
+  // หมายเหตุ: เคยมี auto-detect side จาก Entry vs TP ตรงนี้ แต่ถูกถอดออก
+  // เพราะมันจะ override Side ที่ผู้ใช้ตั้งใจเลือกไว้ (หรือบันทึกไว้แล้วตอนแก้ไข trade)
+  // ทุกครั้งที่ dtCalcAll() รัน — ถ้า TP/SL ถูกป้อนผิดด้านกับ Side ที่ตั้งใจไว้
+  // (เช่น TP สูงกว่า Entry แต่ Side=Short) จะทำให้ Side ถูกสลับไปเป็น Long โดยไม่ตั้งใจ
+  // และทำให้สูตร PnL ทั้งหมดที่ขึ้นกับ DT.side คำนวณผิดเครื่องหมายไปด้วย
+  // Side ควรเปลี่ยนเฉพาะตอนผู้ใช้กดปุ่ม Long/Short เอง (ผ่าน dtSetSide) เท่านั้น
 
   // Lots from Risk — จำนวนเต็มเท่านั้น (floor)
   var lots=0;
@@ -11505,8 +11509,18 @@ function dtCalcAll(){
   var existingPnl=pnlEl?parseFloat(pnlEl.value)||0:0;
 
   if(closePrice&&entry&&lots&&pv){
-    // Calculate gross P&L from close price (most accurate)
-    var grossPnl=(closePrice-entry)*pv*lots*(DT.side==='Long'?1:-1);
+    // ถ้า Close Price ตรงกับ SL หรือ TP (ในช่วง tolerance เล็กๆ) ให้ยึดความหมายของ SL/TP เป็นหลัก
+    // (SL = ขาดทุนเสมอ, TP = กำไรเสมอ) เพื่อไม่ให้ผลลัพธ์สลับเครื่องหมายตอน TP/SL ถูกป้อนผิดด้านกับ Side
+    var _tol=(TICK_SIZE[asset]||0.25)/2;
+    var grossPnl;
+    if(sl&&Math.abs(closePrice-sl)<=_tol){
+      grossPnl=-Math.abs((DT.side==='Long'?-1:1)*(entry-sl)*pv*lots);
+    } else if(tp&&Math.abs(closePrice-tp)<=_tol){
+      grossPnl=Math.abs((DT.side==='Long'?1:-1)*(tp-entry)*pv*lots);
+    } else {
+      // ปิดเองกลางทาง (ไม่ตรงกับ SL/TP) — คำนวณตามราคาจริง
+      grossPnl=(closePrice-entry)*pv*lots*(DT.side==='Long'?1:-1);
+    }
     pnl=grossPnl-dtFees-dtComm;
   } else if(result==='TP'&&entry&&tp&&lots&&pv){
     pnl=(DT.side==='Long'?1:-1)*(tp-entry)*pv*lots-dtFees-dtComm;
