@@ -11432,7 +11432,7 @@ function dtCalcAll(){
   var sl=parseFloat((document.getElementById('dtSL2')||{}).value)||0;
   var risk=parseFloat((document.getElementById('dtRisk')||{}).value)||0;
   var result=(document.getElementById('dtResult')||{}).value||'';
-  var asset=(document.getElementById('dtAsset')||{}).value||'MNQ1';
+  var asset=(document.getElementById('dtAssetSel')||{}).value||'MNQ1';
   var pv=(DT_CONTRACT[asset]||{pts:2}).pts;
 
   // SL pts label — 0.25 = 1 pt (ใช้ TICK_SIZE)
@@ -11578,7 +11578,17 @@ async function dtDoScan(){
     '',
     '=== EXTRACTION RULES ===',
     '',
-    '1. ASSET: instrument name WITHOUT "!" e.g. "MNQ1", "NQ1", "GC1"',
+    '1. ASSET — CRITICAL:',
+    '   Look at the TOP-LEFT corner of the chart for the symbol/ticker label,',
+    '   e.g. "MGC1! · 5s · COMEX" or "MNQ1! · 5s · CME".',
+    '   Return the symbol WITHOUT "!" and WITHOUT exchange/timeframe suffix.',
+    '   Examples: "MGC1! · 5s · COMEX" → "MGC1". "MNQ1! · 5s · CME" → "MNQ1".',
+    '   "NQ1!" → "NQ1". "GC1!" → "GC1". "ES1!" → "ES1". "XAUUSD" → "XAU/USD".',
+    '   "EURUSD" → "EURUSD". "GBPUSD" → "GBPUSD". "USDJPY" → "USDJPY".',
+    '   "BTCUSD" or "BTCUSDT" → "BTCUSD".',
+    '   Do NOT guess — read the exact ticker text shown on screen, even if it',
+    '   looks similar to another symbol (e.g. MGC1 is different from GC1).',
+    '   If truly not visible anywhere, return "".',
     '',
     '2. SIDE: "Long" or "Short"',
     '   - Green/blue box or "Long position" title → Long',
@@ -11624,13 +11634,22 @@ async function dtDoScan(){
     }
     var filled=[];
       // Asset
-      if(d.asset&&document.getElementById('dtAsset')){
-        var sel=document.getElementById('dtAsset');
+      if(d.asset&&document.getElementById('dtAssetSel')){
+        var sel=document.getElementById('dtAssetSel');
         var raw=(d.asset+'').replace('!','').trim().toUpperCase();
-        if(!Array.from(sel.options).find(function(o){return o.value===raw;})){
+        // normalize ให้ตรงกับ option ที่มีอยู่ เช่น XAUUSD→XAU/USD, EUR/USD→EURUSD
+        var rawNoSlash=raw.replace('/','');
+        var existing=Array.from(sel.options).find(function(o){
+          return o.value===raw || o.value.replace('/','')===rawNoSlash;
+        });
+        if(existing){
+          raw=existing.value;
+        } else {
           var opt=document.createElement('option');opt.value=raw;opt.text=raw;sel.appendChild(opt);
         }
         sel.value=raw;
+        var oAssetEl=document.getElementById('oAsset');
+        if(oAssetEl) oAssetEl.value=raw; // sync กับ oAsset เหมือนตอน user เปลี่ยนเอง (ดู onchange ของ dtAssetSel)
         filled.push({k:'Asset',v:raw});
       }
       // Side
